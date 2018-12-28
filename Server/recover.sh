@@ -4,7 +4,7 @@
 # Author(Eds Repo): Edward R. Gonzalez (edwardgz@gmail.com)
 
 # Verbose: Shows commands for debugging.
-
+set -x
 
 User="Eds_FireflyPi"
 FireflyIII_Directory="/home/$User/Docker/FireflyIII"
@@ -12,12 +12,6 @@ ServerDirectory="$FireflyIII_Directory/Server"
 SourceDirectory="$FireflyIII_Directory/Source"
 BackupDirectory="$ServerDirectory/Backups/latest"
 Compose="/usr/local/bin/docker-compose"
-
-
-if [ "$(ls -A $SourceDirectory)" ]; then
-  echo "$SourceDirectory is not empty"
-  exit 1
-fi
 
 if [ ! -f "$BackupDirectory/backup_db.tar.gz" ]; then
   echo "Missing files from $BackupDirectory"
@@ -27,8 +21,9 @@ fi
 cd $FireflyIII_Directory
 
 git init .
-git remote add -t \* -f https://github.com/Ed94/FireflyIII_ForPi.git
-git checkout RaspberryPi-3-B+
+git remote add origin https://github.com/Ed94/FireflyIII_ForPi.git
+git fetch
+git checkout -t -f origin/RaspberryPi-3-B+
 
 cp $BackupDirectory/Dockerfile $SourceDirectory
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
