@@ -13,7 +13,7 @@ cd $FireflyIII_Directory/Server
 
 ls
 
-./takedown.sh
+docker-compose down
 
 docker ps
 
