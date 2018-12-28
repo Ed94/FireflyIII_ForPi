@@ -9,8 +9,11 @@
 set -x
 
 User="Eds_FireflyPi"
-FireflyIII_Directory="/home/$User/Docker/FireflyIII"
-SourceDirectory="$FireflyIII_Directory/Source"
+FireflyDirectory="/home/$User/Docker/FireflyIII"
+SourceDirectory="$FireflyDirectory/Source"
+EntryPoint="$SourceDirectory/.deploy/docker/entrypoint.sh"
+
+chmod +x -R $EntryPoint
 
 cd $SourceDirectory
 
