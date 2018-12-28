@@ -24,7 +24,7 @@ git checkout raspi
 git merge master
 
 # Build the container
-sh build.sh
+sh ./build.sh
 
 # Restart and recreate the image.
 docker-compose up -d --force-recreate

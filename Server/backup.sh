@@ -21,7 +21,7 @@ mkdir -p $BackupDirectory/$CurrentTime
 cd $ServerDirectory
 
 # take the system down. We can't copy databasefiles on a running system
-sh shutdown.sh
+sh ./shutdown.sh
 
 # copy / tar. split in 3 separate commands for easier debugging.
 $Compose run -v $BackupDirectory/$CurrentTime:/backups backup \

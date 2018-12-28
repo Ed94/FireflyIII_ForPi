@@ -29,21 +29,19 @@ git checkout -t -f RaspberryPi-3-B+
 cp $BackupDirectory/Dockerfile $SourceDirectory
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
 
-cd $SourceDirectory
-
-# Rebuild.
-sh build.sh
-
 cd $ServerDirectory
 
+# Rebuild.
+sh ./build.sh
+
 # This will create the volumes etc.
-sh launch.sh
+sh ./launch.sh
 
 # Wait a bit, the database needs to be able to start etc.
 sleep 25
 
 # We can't start moving (database) files over a running system, can we?
-sh shutdown.sh
+sh ./shutdown.sh
 
 # Start restoring our backup. In 3 stages because easier debug. You can probably combine these...
 $Compose run -v $BackupDirectory:/backups backup \
@@ -54,4 +52,4 @@ $Compose run -v $BackupDirectory:/backups backup \
   tar xzf /backups/backup_upload.tar.gz -C /
   
 # Start the system.
-$Compose up -d
+sh ./launch.sh
