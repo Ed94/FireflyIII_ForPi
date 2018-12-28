@@ -13,8 +13,8 @@ SourceDirectory="$FireflyIII_Directory/Source"
 BackupDirectory="$FireflyIII_Directory/Backups/latest"
 Compose="/usr/local/bin/docker-compose"
 
-if [ ! -f "$BackupDirectory/latest/backup_db.tar.gz" ]; then
-  echo "Missing files from $BackupDirectory"
+if [ ! -f "$BackupDirectory/backup_db.tar.gz" ]; then
+  echo "Missing files from $BACKUP_DIR"
   exit 1
 fi
 
