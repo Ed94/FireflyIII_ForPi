@@ -32,18 +32,18 @@ cp $BackupDirectory/docker-compose.yml $ServerDirectory
 cd $SourceDirectory
 
 # Rebuild.
-docker build -t eds/fireflyiii_pi:latest .
+sh build.sh
 
 cd $ServerDirectory
 
 # This will create the volumes etc.
-docker-compose up -d
+sh launch.sh
 
 # Wait a bit, the database needs to be able to start etc.
 sleep 25
 
 # We can't start moving (database) files over a running system, can we?
-docker-compose down
+sh shutdown.sh
 
 # Start restoring our backup. In 3 stages because easier debug. You can probably combine these...
 $Compose run -v $BackupDirectory:/backups backup \

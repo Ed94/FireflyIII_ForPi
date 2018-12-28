@@ -21,7 +21,7 @@ mkdir -p $BackupDirectory/$CurrentTime
 cd $ServerDirectory
 
 # take the system down. We can't copy databasefiles on a running system
-$Compose down
+sh shutdown.sh
 
 # copy / tar. split in 3 separate commands for easier debugging.
 $Compose run -v $BackupDirectory/$CurrentTime:/backups backup \
@@ -36,4 +36,4 @@ $Compose run -v $BackupDirectory/$CurrentTime:/backups backup \
 cp $SourceDirectory/Dockerfile $BackupDirectory/$CurrentTime
 cp $ServerDirectory/docker-compose.yml $BackupDirectory/$CurrentTime
 
-$Compose up -d
+sh launch.sh
