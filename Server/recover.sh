@@ -32,7 +32,7 @@ git checkout RaspberryPi-3-B+
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
 
 # Rebuild.
-docker build -t eds/FireflyIII_ForPi:latest .
+docker build -t eds/fireflyiii_pi:latest .
 
 # This will create the volumes etc.
 docker-compose up -d

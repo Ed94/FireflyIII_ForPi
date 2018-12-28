@@ -1,3 +1,4 @@
+#Note: Make a proper docker-compose.yml using this file.
 --- 
 networks: 
   firefly_iii_net: 
@@ -14,7 +15,7 @@ services:
       - FF_DB_CONNECTION=pgsql
       - TZ=America/New_York
       - APP_LOG_LEVEL=debug
-    image: eds/fireflyIII_ForPi
+    image: eds/fireflyiii_pi
     links: 
       - firefly_iii_db
     networks: 

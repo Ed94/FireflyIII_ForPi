@@ -24,7 +24,7 @@ git checkout raspi
 git merge master
 
 # Build the container
-docker build -t eds/FireflyIII_ForPi:latest
+docker build -t eds/fireflyiii_pi:latest
 
 # Restart and recreate the image.
 docker-compose up -d --force-recreate
