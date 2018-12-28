@@ -39,7 +39,7 @@ sh ./launch.sh
 sleep 25
 
 # We can't start moving (database) files over a running system, can we?
-sh ./shutdown.sh
+$Compose down
 
 # Start restoring our backup. In 3 stages because easier debug. You can probably combine these...
 $Compose run -v $BackupDirectory:/backups backup \
