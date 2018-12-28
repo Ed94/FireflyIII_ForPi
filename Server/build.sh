@@ -14,4 +14,4 @@ SourceDirectory="$FireflyIII_Directory/Source"
 
 cd $SourceDirectory
 
-docker build -t eds/FireflyIII_ForPi:latest .
+docker build -t eds/fireflyIII_pi:latest .
