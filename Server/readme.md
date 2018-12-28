@@ -1,1 +1,1 @@
-Contains server maintencence related scripts for hosting via docker.
+Contains server maintenance related scripts for hosting via docker.
