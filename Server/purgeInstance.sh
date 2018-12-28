@@ -6,7 +6,7 @@
 
 set -x 
 
-docker-compose down
+./shutdown.sh
 
 docker ps
 

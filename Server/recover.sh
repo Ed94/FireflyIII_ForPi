@@ -25,6 +25,7 @@ git remote add origin https://github.com/Ed94/FireflyIII_ForPi.git
 git fetch --all
 git reset --hard origin/RaspberryPi-3-B+
 git checkout -t -f RaspberryPi-3-B+
+git checkout RaspberryPi-3-B+
 
 cp $BackupDirectory/Dockerfile $SourceDirectory
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
