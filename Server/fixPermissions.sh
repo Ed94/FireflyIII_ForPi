@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# NOTE: Not sure if needed.
+# Helps force some permissions for FTP and whatnot.
+
+set -x 
 
 
 sudo docker-compose exec -T firefly_iii_app chown -R www-data:www-data \

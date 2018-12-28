@@ -11,8 +11,9 @@ set -x
 # todo
 # backup ?https://github.com/NanneHuiges/firefly-iii/tree/raspi
 
-UserName="Eds_FireflyPi"
-SourceDirectory="/home/$UserName/Docker/FireflyIII_Server"
+User="Eds_FireflyPi"
+FireflyIII_Directory="/home/$User/Docker/FireflyIII"
+SourceDirectory="$FireflyIII_Directory/Source"
 
 cd $SourceDirectory
 
