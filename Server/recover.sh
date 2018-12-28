@@ -6,7 +6,7 @@
 # Verbose: Shows commands for debugging.
 set -x
 
-User="Eds_FireflyPi"
+User="Eds_FireflyPi":q
 FireflyIII_Directory="/home/$User/Docker/FireflyIII"
 ServerDirectory="$FireflyIII_Directory/Server"
 SourceDirectory="$FireflyIII_Directory/Source"
@@ -18,9 +18,11 @@ if [ ! -f "$BackupDirectory/backup_db.tar.gz" ]; then
   exit 1
 fi
 
-cd $FireflyIII_Directory
+cd $ServerDirectory
 
 sh ./getRepo.sh
+
+cd $FireflyIII_Directory
 
 cp $BackupDirectory/Dockerfile $SourceDirectory
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
