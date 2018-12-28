@@ -30,7 +30,7 @@ rm ./launch.sh
 rm ./purgeInstance.sh
 rm ./readme.md
 rm ./shutdown.sh
-rm ./sqlBakcup.sh
+rm ./sqlBackup.sh
 rm ./sqlBackupCompressed.sh
 rm ./update.sh
 rm ./wipe.sh
