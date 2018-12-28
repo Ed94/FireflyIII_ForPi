@@ -11,7 +11,7 @@ FireflyIII_Directory="/home/$User/Docker/FireflyIII"
 
 cd $FireflyIII_Directory/Server
 
-chmod +x $FireflyIII_Directory/Server/shutdown.sh
+ls
 
 ./shutdown.sh
 
