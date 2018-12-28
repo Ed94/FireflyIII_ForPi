@@ -5,7 +5,7 @@
 # Used to do a clean wipe of a firefly 3 installation with the exception of the Backups and Server directory scripts for recovery.
 
 User="Eds_FireflyPi"
-FireflyDirectory="/home/$User/FireflyIII"
+FireflyDirectory="/home/$User/Docker/FireflyIII"
 ServerDirectory="$FireflyDirectory/Server"
 SourceDirectory="$FireflyDirectory/Source"
 
