@@ -7,7 +7,7 @@
 set -x
 
 User="Eds_FireflyPi"
-FireflyDirectory="/home/$User/FireflyIII"
+FireflyDirectory="/home/$User/Docker/FireflyIII"
 SourceDirectory="$FireflyDirectory/Source"
 EntryPoint="$SourceDirectory/.deploy/docker/entrypoint.sh"
 
