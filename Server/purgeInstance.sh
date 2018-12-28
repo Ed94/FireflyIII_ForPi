@@ -13,7 +13,7 @@ cd $FireflyIII_Directory/Server
 
 ls
 
-./shutdown.sh
+./takedown.sh
 
 docker ps
 
