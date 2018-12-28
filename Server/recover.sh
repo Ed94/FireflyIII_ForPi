@@ -10,7 +10,7 @@ User="Eds_FireflyPi"
 FireflyIII_Directory="/home/$User/Docker/FireflyIII"
 ServerDirectory="$FireflyIII_Directory/Server"
 SourceDirectory="$FireflyIII_Directory/Source"
-BackupDirectory="$ServerDirectory/Backups/latest"
+BackupDirectory="$FireflyIII_Directory/Backups/latest"
 Compose="/usr/local/bin/docker-compose"
 
 if [ ! -f "$BackupDirectory/backup_db.tar.gz" ]; then
@@ -29,8 +29,12 @@ git checkout -t -f RaspberryPi-3-B+
 cp $BackupDirectory/Dockerfile $SourceDirectory
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
 
+cd $SourceDirectory
+
 # Rebuild.
 docker build -t eds/fireflyiii_pi:latest .
+
+cd $ServerDirectory
 
 # This will create the volumes etc.
 docker-compose up -d

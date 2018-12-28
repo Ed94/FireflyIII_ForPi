@@ -11,7 +11,7 @@ User="Eds_FireflyPi"
 FireflyIII_Directory="/home/$User/Docker/FireflyIII"
 ServerDirectory="$FireflyIII_Directory/Server"
 SourceDirectory="$FireflyIII_Directory/Source"
-BackupDirectory="$ServerDirectory/Backups"
+BackupDirectory="$FireflyIII_Directory/Backups"
 Compose="/usr/local/bin/docker-compose"
 CurrentTime=$(date +"%Y_%m_%d")
 
