@@ -12,13 +12,13 @@ SourceDirectory="$FireflyDirectory/Source"
 sh ./purgeInstance.sh
 
 # Firefly directory removals
-rm -r $FireflyDirectory/.git
-rm -r $FireflyDirectory/FireflyManager
-rm -r $FireflyDirectory/Source
-rm $FireflyDirectory/.gitignore
+rm -rf $FireflyDirectory/.git
+rm -rf $FireflyDirectory/FireflyManager
+rm -rf $FireflyDirectory/Source
+rm -f $FireflyDirectory/.gitignore
 
 
 # Server directory removals
 cd $ServerDirectory
 
-rm -v !("recovery.sh")
+rm -vf !("recovery.sh")
