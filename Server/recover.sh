@@ -24,11 +24,13 @@ if [ ! -f "$BackupDirectory/backup_db.tar.gz" ]; then
   exit 1
 fi
 
-cd $SourceDirectory
+cd $FireflyIII_Directory
 
-git clone https://github.com/Ed94/FireflyIII_ForPi.git .
+git init .
+git remote add -t \* -f https://github.com/Ed94/FireflyIII_ForPi.git
 git checkout RaspberryPi-3-B+
 
+cp $BackupDirectory/Dockerfile $SourceDirectory
 cp $BackupDirectory/docker-compose.yml $ServerDirectory
 
 # Rebuild.
