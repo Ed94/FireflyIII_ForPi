@@ -21,4 +21,4 @@ rm -f $FireflyDirectory/.gitignore
 # Server directory removals
 cd $ServerDirectory
 
-rm -vf ! ("recovery.sh")
+rm -fv !("recovery.sh")
