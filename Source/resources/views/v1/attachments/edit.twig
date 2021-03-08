@@ -18,8 +18,8 @@
                         <h3 class="box-title">{{ 'mandatoryFields'|_ }}</h3>
                     </div>
                     <div class="box-body">
-                        {{ ExpandedForm.staticText('filename',attachment.filename) }}
-                        {{ ExpandedForm.staticText('mime',attachment.mime) }}
+                        {{ ExpandedForm.staticText('filename',attachment.filename|escape) }}
+                        {{ ExpandedForm.staticText('mime',attachment.mime|escape) }}
                         {{ ExpandedForm.staticText('size',attachment.size|filesize) }}
                     </div>
                 </div>
@@ -35,7 +35,10 @@
                         {{ ExpandedForm.textarea('notes',null,{helpText: trans('firefly.field_supports_markdown')}) }}
                     </div>
                 </div>
-
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
                 {# panel for options #}
                 <div class="box">
                     <div class="box-header with-border">

@@ -33,16 +33,17 @@
                                     </div>
                                 </td>
                                 <td data-value="{{ link.source.description }}">
-                                    <a href="{{ route('transactions.show', [link.source_id]) }}">{{ link.source.description }}</a>
-                                </td>
-                                <td>{{ link.source|journalTotalAmount }}</td>
-                                <td>{{ journalLinkTranslation('outward', linkType.outward) }}</td>
-                                <td data-value="{{ link.destination.description }}">
-                                    <a href="{{ route('transactions.show', [link.destination_id]) }}">{{ link.destination.description }}</a>
+                                    <a href="{{ route('transactions.show', [link.source.transaction_group_id]) }}">{{ link.source.description }}</a>
                                 </td>
                                 <td>
-                                    {{ link.destination|journalTotalAmount }}
-
+                                    {{ journalObjectAmount(link.source) }}
+                                </td>
+                                <td>{{ journalLinkTranslation('outward', linkType.outward) }}</td>
+                                <td data-value="{{ link.destination.description }}">
+                                    <a href="{{ route('transactions.show', [link.destination.transaction_group_id]) }}">{{ link.destination.description }}</a>
+                                </td>
+                                <td>
+                                    {{ journalObjectAmount(link.destination) }}
                                 </td>
                             </tr>
                         {% endfor %}
@@ -56,9 +57,9 @@
 
 {% endblock %}
 {% block scripts %}
-    <script type="text/javascript" src="v1/js/lib/bootstrap-sortable.js?v={{ FF_VERSION }}"></script>
+    <script type="text/javascript" src="v1/js/lib/bootstrap-sortable.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
 {% endblock %}
 
 {% block styles %}
-    <link rel="stylesheet" href="v1//bootstrap-sortable.css?v={{ FF_VERSION }}" type="text/css" media="all"/>
+    <link rel="stylesheet" href="v1/css/bootstrap-sortable.css?v={{ FF_VERSION }}" type="text/css" media="all"/>
 {% endblock %}

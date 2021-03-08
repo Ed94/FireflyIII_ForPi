@@ -1,35 +1,41 @@
 <?php
 /**
  * LoginController.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2020 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-/** @noinspection PhpDynamicAsStaticMethodCallInspection */
 declare(strict_types=1);
 
 namespace FireflyIII\Http\Controllers\Auth;
 
+use Adldap;
+use Cookie;
 use DB;
-use FireflyConfig;
 use FireflyIII\Http\Controllers\Controller;
-use FireflyIII\User;
-use Illuminate\Cookie\CookieJar;
+use FireflyIII\Providers\RouteServiceProvider;
+use Illuminate\Contracts\View\Factory;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+use Log;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Class LoginController
@@ -49,10 +55,12 @@ class LoginController extends Controller
      *
      * @var string
      */
-    protected $redirectTo = '/home';
+    protected $redirectTo = RouteServiceProvider::HOME;
 
     /**
      * Create a new controller instance.
+     *
+     * @return void
      */
     public function __construct()
     {
@@ -60,91 +68,79 @@ class LoginController extends Controller
         $this->middleware('guest')->except('logout');
     }
 
+
     /**
-     * Log in a user.
+     * Handle a login request to the application.
      *
      * @param Request $request
      *
-     * @return \Illuminate\Http\Response|\Symfony\Component\HttpFoundation\Response|void
-     * @throws \Illuminate\Validation\ValidationException
+     * @return RedirectResponse|\Illuminate\Http\Response|JsonResponse
+     *
+     * @throws ValidationException
      */
     public function login(Request $request)
     {
+        Log::channel('audit')->info(sprintf('User is trying to login using "%s"', $request->get('email')));
+        Log::info(sprintf('User is trying to login.'));
+        if ('ldap' === config('auth.providers.users.driver')) {
+            /** @var Adldap\Connections\Provider $provider */
+            Adldap::getProvider('default');
+        }
+
         $this->validateLogin($request);
 
+        /** Copied directly from AuthenticatesUsers, but with logging added: */
         // If the class is using the ThrottlesLogins trait, we can automatically throttle
         // the login attempts for this application. We'll key this by the username and
         // the IP address of the client making these requests into this application.
-        if ($this->hasTooManyLoginAttempts($request)) {
+        if (method_exists($this, 'hasTooManyLoginAttempts') && $this->hasTooManyLoginAttempts($request)) {
+            Log::channel('audit')->info(sprintf('Login for user "%s" was locked out.', $request->get('email')));
             $this->fireLockoutEvent($request);
 
-            /** @noinspection PhpInconsistentReturnPointsInspection */
-            /** @noinspection PhpVoidFunctionResultUsedInspection */
             return $this->sendLockoutResponse($request);
         }
 
+        /** Copied directly from AuthenticatesUsers, but with logging added: */
         if ($this->attemptLogin($request)) {
-            // user is logged in. Save in session if the user requested session to be remembered:
-            $request->session()->put('remember_login', $request->filled('remember'));
+            Log::channel('audit')->info(sprintf('User "%s" has been logged in.', $request->get('email')));
+            Log::debug(sprintf('Redirect after login is %s.', $this->redirectPath()));
 
-            /** @noinspection PhpInconsistentReturnPointsInspection */
-            /** @noinspection PhpVoidFunctionResultUsedInspection */
+            // if you just logged in, it can't be that you have a valid 2FA cookie.
+
             return $this->sendLoginResponse($request);
         }
 
+        /** Copied directly from AuthenticatesUsers, but with logging added: */
         // If the login attempt was unsuccessful we will increment the number of attempts
         // to login and redirect the user back to the login form. Of course, when this
         // user surpasses their maximum number of attempts they will get locked out.
         $this->incrementLoginAttempts($request);
+        Log::channel('audit')->info(sprintf('Login failed. Attempt for user "%s" failed.', $request->get('email')));
 
-        /** @noinspection PhpInconsistentReturnPointsInspection */
-        /** @noinspection PhpVoidFunctionResultUsedInspection */
-        return $this->sendFailedLoginResponse($request);
-    }
-
-    /**
-     * Log the user out of the application.
-     *
-     * @param Request   $request
-     * @param CookieJar $cookieJar
-     *
-     * @return $this|\Illuminate\Http\RedirectResponse
-     */
-    public function logout(Request $request, CookieJar $cookieJar)
-    {
-        $this->guard()->logout();
-
-        $request->session()->invalidate();
-        $cookie = $cookieJar->forget('twoFactorAuthenticated');
-
-        return redirect('/')->withCookie($cookie);
+        $this->sendFailedLoginResponse($request);
     }
 
     /**
      * Show the application's login form.
      *
-     * @param Request $request
-     *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
+     * @return Factory|\Illuminate\Http\Response|View
      */
     public function showLoginForm(Request $request)
     {
+        Log::channel('audit')->info('Show login form (1.1).');
+
         $count         = DB::table('users')->count();
         $loginProvider = config('firefly.login_provider');
-        $pageTitle     = (string)trans('firefly.login_page_title');
+        $title         = (string)trans('firefly.login_page_title');
         if (0 === $count && 'eloquent' === $loginProvider) {
             return redirect(route('register')); // @codeCoverageIgnore
         }
 
-        // forget 2fa session thing.
-        $request->session()->forget('twoFactorAuthenticated');
-
         // is allowed to?
-        $singleUserMode    = FireflyConfig::get('single_user_mode', config('firefly.configuration.single_user_mode'))->data;
-        $userCount         = User::count();
+        $singleUserMode    = app('fireflyconfig')->get('single_user_mode', config('firefly.configuration.single_user_mode'))->data;
         $allowRegistration = true;
         $allowReset        = true;
-        if (true === $singleUserMode && $userCount > 0) {
+        if (true === $singleUserMode && $count > 0) {
             $allowRegistration = false;
         }
 
@@ -157,6 +153,73 @@ class LoginController extends Controller
         $email    = $request->old('email');
         $remember = $request->old('remember');
 
-        return view('auth.login', compact('allowRegistration', 'email', 'remember', 'allowReset', 'pageTitle'));
+        $storeInCookie = config('google2fa.store_in_cookie', false);
+        if (false !== $storeInCookie) {
+            $cookieName = config('google2fa.cookie_name', 'google2fa_token');
+            request()->cookies->set($cookieName, 'invalid');
+        }
+
+
+        return view('auth.login', compact('allowRegistration', 'email', 'remember', 'allowReset', 'title'));
     }
+
+    /**
+     * Get the failed login response instance.
+     *
+     * @param Request $request
+     *
+     * @return Response
+     *
+     * @throws ValidationException
+     */
+    protected function sendFailedLoginResponse(Request $request)
+    {
+        $exception             = ValidationException::withMessages(
+            [
+                $this->username() => [trans('auth.failed')],
+            ]
+        );
+        $exception->redirectTo = route('login');
+
+        throw $exception;
+    }
+
+
+    /**
+     * Log the user out of the application.
+     *
+     * @param \Illuminate\Http\Request $request
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function logout(Request $request)
+    {
+        $authGuard = config('firefly.authentication_guard');
+        $logoutUri = config('firefly.custom_logout_uri');
+        if ('remote_user_guard' === $authGuard && '' !== $logoutUri) {
+            return redirect($logoutUri);
+        }
+        if ('remote_user_guard' === $authGuard && '' === $logoutUri) {
+            session()->flash('error', trans('firefly.cant_logout_guard'));
+        }
+
+        // also logout current 2FA tokens.
+        $cookieName = config('google2fa.cookie_name', 'google2fa_token');
+        Cookie::forget($cookieName);
+
+        $this->guard()->logout();
+
+        $request->session()->invalidate();
+
+        $request->session()->regenerateToken();
+
+        if ($response = $this->loggedOut($request)) {
+            return $response;
+        }
+
+        return $request->wantsJson()
+            ? new \Illuminate\Http\Response('', 204)
+            : redirect('/');
+    }
+
 }

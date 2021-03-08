@@ -29,7 +29,7 @@
                                     <option label="{{ 'report_type_budget'|_ }}" value="budget">{{ 'report_type_budget'|_ }}</option>
                                     <option label="{{ 'report_type_category'|_ }}" value="category">{{ 'report_type_category'|_ }}</option>
                                     <option label="{{ 'report_type_tag'|_ }}" value="tag">{{ 'report_type_tag'|_ }}</option>
-                                    <option label="{{ 'report_type_account'|_ }}" value="account">{{ 'report_type_account'|_ }}</option>
+                                    <option label="{{ 'report_type_double'|_ }}" value="double">{{ 'report_type_double'|_ }}</option>
                                 </select>
                             </div>
                         </div>
@@ -38,12 +38,16 @@
 
                             <div class="col-sm-9" id="inputAccountsSelect">
                                 <select id="inputAccounts" name="accounts[]" multiple class="form-control">
-                                    {% for account in accounts %}
+                                    {% for role, accountList in groupedAccounts  %}
+                                        <optgroup label="{{ role }}">
+                                    {% for account in accountList %}
                                         <option
                                                 value="{{ account.id }}"
                                                 label="{{ account.name }}{% if accountGetMetaField(account, 'accountRole') == 'sharedAsset' %} ({{ 'shared'|_|lower }}){% endif %}">
                                             {{ account.name }}{% if accountGetMetaField(account, 'accountRole') == 'sharedAsset' %} ({{ 'shared'|_|lower }}){% endif %}
                                         </option>
+                                    {% endfor %}
+                                        </optgroup>
                                     {% endfor %}
                                 </select>
 
@@ -118,7 +122,9 @@
                     <h3 class="box-title">{{ 'quick_link_reports'|_ }}</h3>
                 </div>
                 <div class="box-body">
-
+                    <p>
+                        {{ 'quick_link_examples'|_ }}
+                    </p>
                     <h4>{{ ('quick_link_default_report')|_ }}</h4>
                     <ul>
                         <li>
@@ -132,6 +138,9 @@
                                 <a href="{{ route('reports.report.default',[accountList, 'currentFiscalYearStart','currentFiscalYearEnd']) }}">{{ 'report_this_fiscal_year_quick'|_ }}</a>
                             </li>
                         {% endif %}
+                        <li>
+                            <a href="{{ route('reports.report.default',[accountList, 'previousMonthStart','previousMonthEnd']) }}">{{ 'report_last_month_quick'|_ }}</a>
+                        </li>
                         <li>
                             <a href="{{ route('reports.report.default',[accountList, start.format('Ymd'),'currentMonthEnd']) }}">{{ 'report_all_time_quick'|_ }}</a>
                         </li>
@@ -171,7 +180,7 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="text/javascript">
+    <script type="text/javascript" nonce="{{ JS_NONCE }}">
         var minDate = "{{ start.format('Y-m-d') }}";
         var picker;
         var selectAllText = "{{ trans('firefly.multi_select_select_all')|escape('js') }}";
@@ -180,7 +189,7 @@
         var allSelectedText = "{{ trans('firefly.multi_select_all_selected')|escape('js')   }}";
         var filterPlaceholder = "{{ trans('firefly.multi_select_filter_placeholder')|escape('js') }}";
     </script>
-    <script type="text/javascript" src="v1/js/lib/bootstrap-multiselect.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/ff/reports/all.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/ff/reports/index.js?v={{ FF_VERSION }}"></script>
+    <script type="text/javascript" src="v1/js/lib/bootstrap-multiselect.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/ff/reports/all.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/ff/reports/index.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
 {% endblock %}

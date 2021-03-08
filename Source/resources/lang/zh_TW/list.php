@@ -2,22 +2,22 @@
 
 /**
  * list.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -36,14 +36,18 @@ return [
     'currentBalance'          => '目前餘額',
     'linked_to_rules'         => '相關規則',
     'active'                  => '是否啟用？',
+    'percentage'              => 'pct.',
+    'recurring_transaction'   => 'Recurring transaction',
+    'next_due'                => 'Next due',
+    'transaction_type'        => 'Type',
     'lastActivity'            => '上次活動',
     'balanceDiff'             => '餘額差',
-    'matchesOn'               => '配對於',
+    'other_meta_data'         => 'Other meta data',
     'account_type'            => '帳戶類型',
     'created_at'              => '建立於',
     'account'                 => '帳戶',
+    'external_uri'            => 'External URI',
     'matchingAmount'          => '金額',
-    'split_number'            => '分割編號 #',
     'destination'             => '目標',
     'source'                  => '來源',
     'next_expected_match'     => '下一個預期的配對',
@@ -51,7 +55,6 @@ return [
     'repeat_freq'             => '重複',
     'description'             => '描述',
     'amount'                  => '金額',
-    'internal_reference'      => '內部參考',
     'date'                    => '日期',
     'interest_date'           => '利率日期',
     'book_date'               => '登記日期',
@@ -59,7 +62,7 @@ return [
     'due_date'                => '到期日',
     'payment_date'            => '付款日期',
     'invoice_date'            => '發票日期',
-    'interal_reference'       => '內部參考',
+    'internal_reference'      => 'Internal reference',
     'notes'                   => '備註',
     'from'                    => '自',
     'piggy_bank'              => '小豬撲滿',
@@ -78,8 +81,8 @@ return [
     'registered_at'           => '註冊於',
     'is_blocked'              => '被封鎖',
     'is_admin'                => '是管理員',
-    'has_two_factor'          => '有雙重身份驗證 (2FA)',
-    'blocked_code'            => '區塊代碼',
+    'has_two_factor'          => '有兩步驟驗證 (2FA)',
+    'blocked_code'            => '封鎖代碼',
     'source_account'          => '來源帳戶',
     'destination_account'     => '目標帳戶',
     'accounts_count'          => '帳戶數量',
@@ -87,14 +90,12 @@ return [
     'attachments_count'       => '附加檔案數量',
     'bills_count'             => '帳單數量',
     'categories_count'        => '分類數量',
-    'export_jobs_count'       => '匯出工作數量',
-    'import_jobs_count'       => '匯入工作數量',
     'budget_count'            => '預算數量',
     'rule_and_groups_count'   => '規則及規則群組數量',
     'tags_count'              => '標籤數量',
     'tags'                    => '標籤',
-    'inward'                  => '向內描述',
-    'outward'                 => '外向描述',
+    'inward'                  => '流入描述',
+    'outward'                 => '流出描述',
     'number_of_transactions'  => '交易數量',
     'total_amount'            => '總金額',
     'sum'                     => '總和',
@@ -102,18 +103,16 @@ return [
     'sum_withdrawals'         => '提款總和',
     'sum_deposits'            => '存款總和',
     'sum_transfers'           => '轉帳總和',
+    'sum_reconciliations'     => 'Sum of reconciliations',
     'reconcile'               => '對帳',
-    'account_on_spectre'      => '帳戶 (Spectre)',
-    'account_on_ynab'         => '帳戶 (YNAB)',
-    'do_import'               => '自此帳戶匯入',
-    'sepa-ct-id'              => 'SEPA End to End Identifier',
-    'sepa-ct-op'              => 'SEPA Opposing Account Identifier',
-    'sepa-db'                 => 'SEPA Mandate Identifier',
-    'sepa-country'            => 'SEPA Country',
-    'sepa-cc'                 => 'SEPA Clearing Code',
-    'sepa-ep'                 => 'SEPA External Purpose',
-    'sepa-ci'                 => 'SEPA Creditor Identifier',
-    'sepa-batch-id'           => 'SEPA Batch ID',
+    'sepa_ct_id'              => 'SEPA End to End Identifier',
+    'sepa_ct_op'              => 'SEPA Opposing Account Identifier',
+    'sepa_db'                 => 'SEPA Mandate Identifier',
+    'sepa_country'            => 'SEPA Country',
+    'sepa_cc'                 => 'SEPA Clearing Code',
+    'sepa_ep'                 => 'SEPA External Purpose',
+    'sepa_ci'                 => 'SEPA Creditor Identifier',
+    'sepa_batch_id'           => 'SEPA Batch ID',
     'external_id'             => '外部 ID',
     'account_at_bunq'         => 'bunq 帳戶',
     'file_name'               => '檔案名稱',

@@ -1,61 +1,49 @@
 <?php
 /**
  * CategoryRepository.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Repositories\Category;
 
 use Carbon\Carbon;
+use DB;
+use FireflyIII\Exceptions\FireflyException;
 use FireflyIII\Factory\CategoryFactory;
-use FireflyIII\Helpers\Collector\TransactionCollectorInterface;
+use FireflyIII\Models\Attachment;
 use FireflyIII\Models\Category;
-use FireflyIII\Models\Transaction;
-use FireflyIII\Models\TransactionType;
+use FireflyIII\Models\Note;
+use FireflyIII\Models\RecurrenceTransactionMeta;
+use FireflyIII\Models\RuleAction;
 use FireflyIII\Services\Internal\Destroy\CategoryDestroyService;
 use FireflyIII\Services\Internal\Update\CategoryUpdateService;
 use FireflyIII\User;
 use Illuminate\Support\Collection;
 use Log;
-use Navigation;
+use Storage;
 
 /**
  * Class CategoryRepository.
- *
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
- * @SuppressWarnings(PHPMD.TooManyPublicMethods)
- * @SuppressWarnings(PHPMD.ExcessiveClassComplexity)
  */
 class CategoryRepository implements CategoryRepositoryInterface
 {
-    /** @var User */
-    private $user;
-
-    /**
-     * Constructor.
-     */
-    public function __construct()
-    {
-        if ('testing' === config('app.env')) {
-            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', \get_class($this)));
-        }
-    }
+    private User $user;
 
     /**
      * @param Category $category
@@ -73,49 +61,6 @@ class CategoryRepository implements CategoryRepositoryInterface
         return true;
     }
 
-    /** @noinspection MoreThanThreeArgumentsInspection */
-    /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return string
-     */
-    public function earnedInPeriod(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): string
-    {
-        $set = $this->earnedInPeriodCollection($categories, $accounts, $start, $end);
-
-        return (string)$set->sum('transaction_amount');
-    }
-
-    /** @noinspection MoreThanThreeArgumentsInspection */
-    /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return Collection
-     */
-    public function earnedInPeriodCollection(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): Collection
-    {
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($this->user);
-        if (0 !== $accounts->count()) {
-            $collector->setAccounts($accounts);
-        }
-
-        if (0 === $accounts->count()) {
-            $collector->setAllAssetAccounts();
-        }
-
-        $collector->setRange($start, $end)->setTypes([TransactionType::DEPOSIT])->setCategories($categories);
-
-        return $collector->getTransactions();
-    }
-
     /**
      * Find a category.
      *
@@ -126,6 +71,9 @@ class CategoryRepository implements CategoryRepositoryInterface
     public function findByName(string $name): ?Category
     {
         $categories = $this->user->categories()->get(['categories.*']);
+
+        // TODO no longer need to loop like this
+
         foreach ($categories as $category) {
             if ($category->name === $name) {
                 return $category;
@@ -133,6 +81,33 @@ class CategoryRepository implements CategoryRepositoryInterface
         }
 
         return null;
+    }
+
+    /**
+     * @param int|null    $categoryId
+     * @param string|null $categoryName
+     *
+     * @return Category|null
+     */
+    public function findCategory(?int $categoryId, ?string $categoryName): ?Category
+    {
+        Log::debug('Now in findCategory()');
+        Log::debug(sprintf('Searching for category with ID #%d...', $categoryId));
+        $result = $this->findNull((int)$categoryId);
+        if (null === $result) {
+            Log::debug(sprintf('Searching for category with name %s...', $categoryName));
+            $result = $this->findByName((string)$categoryName);
+            if (null === $result && '' !== (string)$categoryName) {
+                // create it!
+                $result = $this->store(['name' => $categoryName]);
+            }
+        }
+        if (null !== $result) {
+            Log::debug(sprintf('Found category #%d: %s', $result->id, $result->name));
+        }
+        Log::debug(sprintf('Found category result is null? %s', var_export(null === $result, true)));
+
+        return $result;
     }
 
     /**
@@ -151,7 +126,7 @@ class CategoryRepository implements CategoryRepositoryInterface
      * @param Category $category
      *
      * @return Carbon|null
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     *
      */
     public function firstUseDate(Category $category): ?Carbon
     {
@@ -194,18 +169,8 @@ class CategoryRepository implements CategoryRepositoryInterface
      */
     public function getCategories(): Collection
     {
-        /** @var Collection $set */
-        $set = $this->user->categories()->orderBy('name', 'ASC')->get();
-        $set = $set->sortBy(
-            function (Category $category) {
-                return strtolower($category->name);
-            }
-        );
-
-        return $set;
+        return $this->user->categories()->with(['attachments'])->orderBy('name', 'ASC')->get();
     }
-
-    /** @noinspection MoreThanThreeArgumentsInspection */
 
     /**
      * @param Category   $category
@@ -213,7 +178,6 @@ class CategoryRepository implements CategoryRepositoryInterface
      *
      * @return Carbon|null
      *
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
      */
     public function lastUseDate(Category $category, Collection $accounts): ?Carbon
     {
@@ -230,7 +194,7 @@ class CategoryRepository implements CategoryRepositoryInterface
             return $lastTransactionDate;
         }
 
-        if ($lastTransactionDate < $lastJournalDate) {
+        if ($lastTransactionDate > $lastJournalDate) {
             return $lastTransactionDate;
         }
 
@@ -238,177 +202,20 @@ class CategoryRepository implements CategoryRepositoryInterface
     }
 
     /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
+     * @param string $query
+     * @param int    $limit
      *
-     * @return array
+     * @return Collection
      */
-    public function periodExpenses(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): array
+    public function searchCategory(string $query, int $limit): Collection
     {
-        $carbonFormat = Navigation::preferredCarbonFormat($start, $end);
-        $data         = [];
-        // prep data array:
-        /** @var Category $category */
-        foreach ($categories as $category) {
-            $data[$category->id] = [
-                'name'    => $category->name,
-                'sum'     => '0',
-                'entries' => [],
-            ];
+        $search = $this->user->categories();
+        if ('' !== $query) {
+            $search->where('name', 'LIKE', sprintf('%%%s%%', $query));
         }
 
-        // get all transactions:
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setAccounts($accounts)->setRange($start, $end);
-        $collector->setCategories($categories)->setTypes([TransactionType::WITHDRAWAL, TransactionType::TRANSFER])
-                  ->withOpposingAccount();
-        $transactions = $collector->getTransactions();
-
-        // loop transactions:
-        /** @var Transaction $transaction */
-        foreach ($transactions as $transaction) {
-            // if positive, skip:
-            if (1 === bccomp($transaction->transaction_amount, '0')) {
-                continue;
-            }
-            $categoryId                          = max((int)$transaction->transaction_journal_category_id, (int)$transaction->transaction_category_id);
-            $date                                = $transaction->date->format($carbonFormat);
-            $data[$categoryId]['entries'][$date] = bcadd($data[$categoryId]['entries'][$date] ?? '0', $transaction->transaction_amount);
-        }
-
-        return $data;
+        return $search->take($limit)->get();
     }
-
-    /** @noinspection MoreThanThreeArgumentsInspection */
-
-    /**
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return array
-     */
-    public function periodExpensesNoCategory(Collection $accounts, Carbon $start, Carbon $end): array
-    {
-        $carbonFormat = Navigation::preferredCarbonFormat($start, $end);
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setAccounts($accounts)->setRange($start, $end)->withOpposingAccount();
-        $collector->setTypes([TransactionType::WITHDRAWAL, TransactionType::TRANSFER]);
-        $collector->withoutCategory();
-        $transactions = $collector->getTransactions();
-        $result       = [
-            'entries' => [],
-            'name'    => (string)trans('firefly.no_category'),
-            'sum'     => '0',
-        ];
-
-        foreach ($transactions as $transaction) {
-            // if positive, skip:
-            if (1 === bccomp($transaction->transaction_amount, '0')) {
-                continue;
-            }
-            $date = $transaction->date->format($carbonFormat);
-
-            if (!isset($result['entries'][$date])) {
-                $result['entries'][$date] = '0';
-            }
-            $result['entries'][$date] = bcadd($result['entries'][$date], $transaction->transaction_amount);
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return array
-     */
-    public function periodIncome(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): array
-    {
-        $carbonFormat = Navigation::preferredCarbonFormat($start, $end);
-        $data         = [];
-        // prep data array:
-        /** @var Category $category */
-        foreach ($categories as $category) {
-            $data[$category->id] = [
-                'name'    => $category->name,
-                'sum'     => '0',
-                'entries' => [],
-            ];
-        }
-
-        // get all transactions:
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setAccounts($accounts)->setRange($start, $end);
-        $collector->setCategories($categories)->setTypes([TransactionType::DEPOSIT, TransactionType::TRANSFER])
-                  ->withOpposingAccount();
-        $transactions = $collector->getTransactions();
-
-        // loop transactions:
-        /** @var Transaction $transaction */
-        foreach ($transactions as $transaction) {
-            // if negative, skip:
-            if (bccomp($transaction->transaction_amount, '0') === -1) {
-                continue;
-            }
-            $categoryId                          = max((int)$transaction->transaction_journal_category_id, (int)$transaction->transaction_category_id);
-            $date                                = $transaction->date->format($carbonFormat);
-            $data[$categoryId]['entries'][$date] = bcadd($data[$categoryId]['entries'][$date] ?? '0', $transaction->transaction_amount);
-        }
-
-        return $data;
-    }
-
-    /**
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return array
-     */
-    public function periodIncomeNoCategory(Collection $accounts, Carbon $start, Carbon $end): array
-    {
-        Log::debug('Now in periodIncomeNoCategory()');
-        $carbonFormat = Navigation::preferredCarbonFormat($start, $end);
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setAccounts($accounts)->setRange($start, $end)->withOpposingAccount();
-        $collector->setTypes([TransactionType::DEPOSIT, TransactionType::TRANSFER]);
-        $collector->withoutCategory();
-        $transactions = $collector->getTransactions();
-        $result       = [
-            'entries' => [],
-            'name'    => (string)trans('firefly.no_category'),
-            'sum'     => '0',
-        ];
-        Log::debug('Looping transactions..');
-        foreach ($transactions as $transaction) {
-            // if negative, skip:
-            if (bccomp($transaction->transaction_amount, '0') === -1) {
-                continue;
-            }
-            $date = $transaction->date->format($carbonFormat);
-
-            if (!isset($result['entries'][$date])) {
-                $result['entries'][$date] = '0';
-            }
-            $result['entries'][$date] = bcadd($result['entries'][$date], $transaction->transaction_amount);
-        }
-        Log::debug('Done looping transactions..');
-        Log::debug('Finished periodIncomeNoCategory()');
-
-        return $result;
-    }
-
-    /** @noinspection MoreThanThreeArgumentsInspection */
 
     /**
      * @param User $user
@@ -418,169 +225,11 @@ class CategoryRepository implements CategoryRepositoryInterface
         $this->user = $user;
     }
 
-    /** @noinspection MoreThanThreeArgumentsInspection */
-    /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return string
-     */
-    public function spentInPeriod(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): string
-    {
-        $set = $this->spentInPeriodCollection($categories, $accounts, $start, $end);
-
-
-        return (string)$set->sum('transaction_amount');
-    }
-
-    /** @noinspection MoreThanThreeArgumentsInspection */
-    /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return Collection
-     */
-    public function spentInPeriodCollection(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): Collection
-    {
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($this->user);
-        $collector->setRange($start, $end)->setTypes([TransactionType::WITHDRAWAL])->setCategories($categories);
-
-        if ($accounts->count() > 0) {
-            $collector->setAccounts($accounts);
-        }
-        if (0 === $accounts->count()) {
-            $collector->setAllAssetAccounts();
-        }
-
-        return $collector->getTransactions();
-    }
-
-    /**
-     * A very cryptic method name that means:
-     *
-     * Get me the amount spent in this period, grouped per currency, where no category was set.
-     *
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return array
-     */
-    public function spentInPeriodPcWoCategory(Collection $accounts, Carbon $start, Carbon $end): array
-    {
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($this->user);
-        $collector->setRange($start, $end)->setTypes([TransactionType::WITHDRAWAL])->withoutCategory();
-
-        if ($accounts->count() > 0) {
-            $collector->setAccounts($accounts);
-        }
-        if (0 === $accounts->count()) {
-            $collector->setAllAssetAccounts();
-        }
-
-        $set = $collector->getTransactions();
-        $set = $set->filter(
-            function (Transaction $transaction) {
-                if (bccomp($transaction->transaction_amount, '0') === -1) {
-                    return $transaction;
-                }
-
-                return null;
-            }
-        );
-
-        $return = [];
-        /** @var Transaction $transaction */
-        foreach ($set as $transaction) {
-            $currencyId          = $transaction->transaction_currency_id;
-            $return[$currencyId] = $return[$currencyId] ?? '0';
-            $return[$currencyId] = bcadd($return[$currencyId], $transaction->transaction_amount);
-        }
-
-        return $return;
-    }
-
-    /**
-     * @param Collection $categories
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return array
-     */
-    public function spentInPeriodPerCurrency(Collection $categories, Collection $accounts, Carbon $start, Carbon $end): array
-    {
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($this->user);
-        $collector->setRange($start, $end)->setTypes([TransactionType::WITHDRAWAL])->setCategories($categories);
-
-        if ($accounts->count() > 0) {
-            $collector->setAccounts($accounts);
-        }
-        if (0 === $accounts->count()) {
-            $collector->setAllAssetAccounts();
-        }
-
-        $set    = $collector->getTransactions();
-        $return = [];
-        /** @var Transaction $transaction */
-        foreach ($set as $transaction) {
-            $currencyId          = $transaction->transaction_currency_id;
-            $return[$currencyId] = $return[$currencyId] ?? '0';
-            $return[$currencyId] = bcadd($return[$currencyId], $transaction->transaction_amount);
-        }
-
-        return $return;
-    }
-
-    /**
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return string
-     */
-    public function spentInPeriodWithoutCategory(Collection $accounts, Carbon $start, Carbon $end): string
-    {
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($this->user);
-        $collector->setRange($start, $end)->setTypes([TransactionType::WITHDRAWAL])->withoutCategory();
-
-        if ($accounts->count() > 0) {
-            $collector->setAccounts($accounts);
-        }
-        if (0 === $accounts->count()) {
-            $collector->setAllAssetAccounts();
-        }
-
-        $set = $collector->getTransactions();
-        $set = $set->filter(
-            function (Transaction $transaction) {
-                if (bccomp($transaction->transaction_amount, '0') === -1) {
-                    return $transaction;
-                }
-
-                return null;
-            }
-        );
-
-        return (string)$set->sum('transaction_amount');
-    }
-
     /**
      * @param array $data
      *
      * @return Category
+     * @throws FireflyException
      */
     public function store(array $data): Category
     {
@@ -588,8 +237,32 @@ class CategoryRepository implements CategoryRepositoryInterface
         $factory = app(CategoryFactory::class);
         $factory->setUser($this->user);
 
-        return $factory->findOrCreate(null, $data['name']);
+        $category = $factory->findOrCreate(null, $data['name']);
+
+        if (null === $category) {
+            throw new FireflyException(sprintf('400003: Could not store new category with name "%s"', $data['name']));
+        }
+
+        if (array_key_exists('notes', $data) && '' === $data['notes']) {
+            $this->removeNotes($category);
+        }
+        if (array_key_exists('notes', $data) && '' !== $data['notes']) {
+            $this->updateNotes($category, $data['notes']);
+        }
+
+        return $category;
+
     }
+
+
+    /**
+     * @param Category $category
+     */
+    public function removeNotes(Category $category): void
+    {
+        $category->notes()->delete();
+    }
+
 
     /**
      * @param Category $category
@@ -601,6 +274,7 @@ class CategoryRepository implements CategoryRepositoryInterface
     {
         /** @var CategoryUpdateService $service */
         $service = app(CategoryUpdateService::class);
+        $service->setUser($this->user);
 
         return $service->update($category, $data);
     }
@@ -671,6 +345,7 @@ class CategoryRepository implements CategoryRepositoryInterface
      * @param Collection $accounts
      *
      * @return Carbon|null
+     * @throws \Exception
      */
     private function getLastTransactionDate(Category $category, Collection $accounts): ?Carbon
     {
@@ -689,5 +364,69 @@ class CategoryRepository implements CategoryRepositoryInterface
         }
 
         return null;
+    }
+
+    /**
+     * Delete all categories.
+     */
+    public function destroyAll(): void
+    {
+        $categories = $this->getCategories();
+        /** @var Category $category */
+        foreach ($categories as $category) {
+            DB::table('category_transaction')->where('category_id', $category->id)->delete();
+            DB::table('category_transaction_journal')->where('category_id', $category->id)->delete();
+            RecurrenceTransactionMeta::where('name', 'category_id')->where('value', $category->id)->delete();
+            RuleAction::where('action_type', 'set_category')->where('action_value', $category->name)->delete();
+            $category->delete();
+        }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getAttachments(Category $category): Collection
+    {
+        $set = $category->attachments()->get();
+
+        /** @var Storage $disk */
+        $disk = Storage::disk('upload');
+
+        return $set->each(
+            static function (Attachment $attachment) use ($disk) {
+                $notes                   = $attachment->notes()->first();
+                $attachment->file_exists = $disk->exists($attachment->fileName());
+                $attachment->notes       = $notes ? $notes->text : '';
+
+                return $attachment;
+            }
+        );
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function updateNotes(Category $category, string $notes): void
+    {
+        $dbNote = $category->notes()->first();
+        if (null === $dbNote) {
+            $dbNote = new Note;
+            $dbNote->noteable()->associate($category);
+        }
+        $dbNote->text = trim($notes);
+        $dbNote->save();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getNoteText(Category $category): ?string
+    {
+        $dbNote = $category->notes()->first();
+        if (null === $dbNote) {
+            return null;
+        }
+
+        return $dbNote->text;
     }
 }

@@ -42,33 +42,35 @@
                 <em>
                     {{ trans('firefly.no_audit_activity',
                         {
-                            account_name: account.name,
+                            account_name: account.name|escape,
                             url: url,
                             start: start.formatLocalized(monthAndDayFormat),
                             end: end.formatLocalized(monthAndDayFormat),
                         })|raw }}
+
                 </em>
             </div>
             {% else %}
-            <div class="box-body table-responsive no-padding">
+            <div class="box-body no-padding">
+                <p style="padding:10px;">
+                    {{ trans('firefly.audit_end_balance',
+                        {
+                            account_name: account.name|escape,
+                            url: url,
+                            end: auditData[account.id].dayBefore,
+                            balance: formatAmountByAccount(account, auditData[account.id].dayBeforeBalance)
+                        })|raw }}
+                </p>
+                {% include 'reports.partials.journals-audit'  with {'journals': auditData[account.id].journals,'account':account} %}
+
                 <p style="padding:10px;">
 
                     {{ trans('firefly.audit_end_balance',
                         {
-                            account_name: account.name,
+                            account_name: account.name|escape,
                             url: url,
                             end: auditData[account.id].end,
                             balance: formatAmountByAccount(account,auditData[account.id].endBalance)
-                        })|raw }}
-                </p>
-                {% include 'reports.partials.journals-audit'  with {'journals': auditData[account.id].journals,'account':account} %}
-                <p style="padding:10px;">
-                    {{ trans('firefly.audit_end_balance',
-                        {
-                            account_name: account.name,
-                            url: url,
-                            end: auditData[account.id].dayBefore,
-                            balance: formatAmountByAccount(account, auditData[account.id].dayBeforeBalance)
                         })|raw }}
                 </p>
             </div>
@@ -82,9 +84,9 @@
 {% block styles %}
 {% endblock %}
 {% block scripts %}
-    <script type="text/javascript">
+    <script type="text/javascript" nonce="{{ JS_NONCE }}">
         var hideable = {{ hideable|json_encode|raw }};
     </script>
-    <script type="text/javascript" src="v1/js/ff/reports/all.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/ff/reports/audit/all.js?v={{ FF_VERSION }}"></script>
+    <script type="text/javascript" src="v1/js/ff/reports/all.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/ff/reports/audit/all.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
 {% endblock %}

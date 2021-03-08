@@ -1,22 +1,22 @@
 <?php
 /**
  * Date.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -24,7 +24,7 @@ namespace FireflyIII\Support\Binder;
 
 use Carbon\Carbon;
 use Exception;
-use FireflyIII\Helpers\FiscalHelperInterface;
+use FireflyIII\Helpers\Fiscal\FiscalHelperInterface;
 use Illuminate\Routing\Route;
 use Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -47,15 +47,26 @@ class Date implements BinderInterface
         $fiscalHelper = app(FiscalHelperInterface::class);
 
         $magicWords = [
-            'currentMonthStart'      => Carbon::now()->startOfMonth(),
-            'currentMonthEnd'        => Carbon::now()->endOfMonth(),
-            'currentYearStart'       => Carbon::now()->startOfYear(),
-            'currentYearEnd'         => Carbon::now()->endOfYear(),
-            'currentFiscalYearStart' => $fiscalHelper->startOfFiscalYear(Carbon::now()),
-            'currentFiscalYearEnd'   => $fiscalHelper->endOfFiscalYear(Carbon::now()),
+            'currentMonthStart' => Carbon::now()->startOfMonth(),
+            'currentMonthEnd'   => Carbon::now()->endOfMonth(),
+            'currentYearStart'  => Carbon::now()->startOfYear(),
+            'currentYearEnd'    => Carbon::now()->endOfYear(),
+
+            'previousMonthStart' => Carbon::now()->startOfMonth()->subDay()->startOfMonth(),
+            'previousMonthEnd'   => Carbon::now()->startOfMonth()->subDay()->endOfMonth(),
+            'previousYearStart'  => Carbon::now()->startOfYear()->subDay()->startOfYear(),
+            'previousYearEnd'    => Carbon::now()->startOfYear()->subDay()->endOfYear(),
+
+            'currentFiscalYearStart'  => $fiscalHelper->startOfFiscalYear(Carbon::now()),
+            'currentFiscalYearEnd'    => $fiscalHelper->endOfFiscalYear(Carbon::now()),
+            'previousFiscalYearStart' => $fiscalHelper->startOfFiscalYear(Carbon::now())->subYear(),
+            'previousFiscalYearEnd'   => $fiscalHelper->endOfFiscalYear(Carbon::now())->subYear(),
         ];
         if (isset($magicWords[$value])) {
-            return $magicWords[$value];
+            $return = $magicWords[$value];
+            Log::debug(sprintf('User requests "%s", so will return "%s"', $value, $return));
+
+            return $return;
         }
 
         try {

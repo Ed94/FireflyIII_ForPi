@@ -1,29 +1,20 @@
 language: php
 php:
-  - 7.2
-
+- '7.4'
+dist: xenial
+os: linux
 cache:
-    directories:
-        - vendor
-        - $HOME/.composer/cache
+  directories:
+  - "/home/travis/.config"
+  - "/home/travis/build/firefly-iii/firefly-iii/vendor"
 
-install:
-  - rm composer.lock
-  - composer update --no-scripts
-  - cp .env.testing .env
-  - php artisan clear-compiled
-  - php artisan env
-  - wget -q https://github.com/firefly-iii/test-data/raw/master/storage/database.sqlite -O storage/database/database.sqlite
-  - mkdir -p build/logs
-
-script:
-  - ./vendor/bin/phpunit -c phpunit.coverage.xml
-
-after_success:
-  - travis_retry php vendor/bin/php-coveralls -x storage/build/clover-all.xml
-
-# safelist
 branches:
   only:
   - develop
-  - master
+
+before_script:
+- phpenv config-rm xdebug.ini || return 0
+
+script:
+- "./.ci/phpstan.sh"
+- "./.ci/phpunit.sh"

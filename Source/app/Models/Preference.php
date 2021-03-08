@@ -1,47 +1,55 @@
 <?php
 /**
  * Preference.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Models;
 
 use Carbon\Carbon;
-use Crypt;
-use Exception;
-use FireflyIII\Exceptions\FireflyException;
+use Eloquent;
 use FireflyIII\User;
-use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Class Preference.
+ * FireflyIII\Models\Preference
  *
- * @property mixed  $data
+ * @property int $id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property int $user_id
  * @property string $name
- * @property Carbon $updated_at
- * @property Carbon $created_at
- * @property int    $id
- * @property User   user
+ * @property array|null $data
+ * @property-read User $user
+ * @method static Builder|Preference newModelQuery()
+ * @method static Builder|Preference newQuery()
+ * @method static Builder|Preference query()
+ * @method static Builder|Preference whereCreatedAt($value)
+ * @method static Builder|Preference whereData($value)
+ * @method static Builder|Preference whereId($value)
+ * @method static Builder|Preference whereName($value)
+ * @method static Builder|Preference whereUpdatedAt($value)
+ * @method static Builder|Preference whereUserId($value)
+ * @mixin Eloquent
  */
 class Preference extends Model
 {
@@ -54,6 +62,7 @@ class Preference extends Model
         = [
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'data'       => 'array',
         ];
 
     /** @var array Fields that can be filled */
@@ -64,8 +73,8 @@ class Preference extends Model
      *
      * @param string $value
      *
-     * @return Preference
      * @throws NotFoundHttpException
+     * @return Preference
      */
     public static function routeBinder(string $value): Preference
     {
@@ -79,54 +88,6 @@ class Preference extends Model
             }
         }
         throw new NotFoundHttpException;
-    }
-
-
-    /**
-     * @param $value
-     *
-     * @return mixed
-     *
-     * @throws FireflyException
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
-     */
-    public function getDataAttribute($value)
-    {
-        $result = null;
-        try {
-            $data = Crypt::decrypt($value);
-        } catch (DecryptException $e) {
-            Log::error(sprintf('Could not decrypt preference: %s', $e->getMessage()), ['id' => $this->id, 'name' => $this->name, 'data' => $value]);
-            throw new FireflyException(
-                sprintf('Could not decrypt preference #%d. If this error persists, please run "php artisan cache:clear" on the command line.', $this->id)
-            );
-        }
-        $serialized = true;
-        try {
-            unserialize($data, ['allowed_classes' => false]);
-        } /** @noinspection BadExceptionsProcessingInspection */ catch (Exception $e) {
-            $serialized = false;
-        }
-        if (!$serialized) {
-            $result = json_decode($data, true);
-        }
-        if ($serialized) {
-            Log::error(sprintf('Preference #%d ("%s") was stored as serialised object. It will be deleted and recreated.', $this->id, $this->name));
-        }
-
-        return $result;
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setDataAttribute($value): void
-    {
-        $this->attributes['data'] = Crypt::encrypt(json_encode($value));
     }
 
     /**

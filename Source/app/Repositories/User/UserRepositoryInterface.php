@@ -1,22 +1,22 @@
 <?php
 /**
  * UserRepositoryInterface.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -32,12 +32,6 @@ use Illuminate\Support\Collection;
 interface UserRepositoryInterface
 {
 
-    /**
-     * @param User $user
-     *
-     * @return string|null
-     */
-    public function getRoleByUser(User $user): ?string;
     /**
      * Returns a collection of all users.
      *
@@ -62,9 +56,9 @@ interface UserRepositoryInterface
      * @param User   $user
      * @param string $newEmail
      *
+     * @return bool
      * @see updateEmail
      *
-     * @return bool
      */
     public function changeEmail(User $user, string $newEmail): bool;
 
@@ -137,6 +131,13 @@ interface UserRepositoryInterface
     public function getRole(string $role): ?Role;
 
     /**
+     * @param User $user
+     *
+     * @return string|null
+     */
+    public function getRoleByUser(User $user): ?string;
+
+    /**
      * Return basic user information.
      *
      * @param User $user
@@ -152,6 +153,22 @@ interface UserRepositoryInterface
      * @return bool
      */
     public function hasRole(User $user, string $role): bool;
+
+    /**
+     * Remove any role the user has.
+     *
+     * @param User   $user
+     * @param string $role
+     */
+    public function removeRole(User $user, string $role): void;
+
+    /**
+     * Set MFA code.
+     *
+     * @param User        $user
+     * @param string|null $code
+     */
+    public function setMFACode(User $user, ?string $code): void;
 
     /**
      * @param array $data
@@ -182,9 +199,9 @@ interface UserRepositoryInterface
      * @param User   $user
      * @param string $newEmail
      *
+     * @return bool
      * @see changeEmail
      *
-     * @return bool
      */
     public function updateEmail(User $user, string $newEmail): bool;
 }

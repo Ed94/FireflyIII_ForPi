@@ -1,51 +1,57 @@
 <?php
 /**
  * CreateController.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 namespace FireflyIII\Http\Controllers\Rule;
 
-
 use FireflyIII\Http\Controllers\Controller;
 use FireflyIII\Http\Requests\RuleFormRequest;
 use FireflyIII\Models\Bill;
+use FireflyIII\Models\Rule;
 use FireflyIII\Models\RuleGroup;
+use FireflyIII\Models\TransactionJournal;
 use FireflyIII\Repositories\Rule\RuleRepositoryInterface;
+use FireflyIII\Support\Http\Controllers\ModelInformation;
 use FireflyIII\Support\Http\Controllers\RuleManagement;
+use FireflyIII\Support\Search\SearchInterface;
+use Illuminate\Contracts\View\Factory;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Log;
-use Throwable;
+use Illuminate\Routing\Redirector;
+use Illuminate\View\View;
 
 /**
  * Class CreateController
  */
 class CreateController extends Controller
 {
-    use RuleManagement;
-    /** @var RuleRepositoryInterface Rule repository */
-    private $ruleRepos;
+    use RuleManagement, ModelInformation;
+
+    private RuleRepositoryInterface $ruleRepos;
 
     /**
      * RuleController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -53,7 +59,7 @@ class CreateController extends Controller
 
         $this->middleware(
             function ($request, $next) {
-                app('view')->share('title', (string)trans('firefly.rules'));
+                app('view')->share('title', (string) trans('firefly.rules'));
                 app('view')->share('mainTitleIcon', 'fa-random');
 
                 $this->ruleRepos = app(RuleRepositoryInterface::class);
@@ -66,12 +72,10 @@ class CreateController extends Controller
     /**
      * Create a new rule. It will be stored under the given $ruleGroup.
      *
-     * @param Request   $request
-     * @param RuleGroup $ruleGroup
+     * @param Request        $request
+     * @param RuleGroup|null $ruleGroup
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     * @return Factory|View
      */
     public function create(Request $request, RuleGroup $ruleGroup = null)
     {
@@ -83,20 +87,34 @@ class CreateController extends Controller
         $oldTriggers = [];
         $oldActions  = [];
 
+        // build triggers from query, if present.
+        $query = (string) $request->get('from_query');
+        if ('' !== $query) {
+            $search = app(SearchInterface::class);
+            $search->parseQuery($query);
+            $words     = $search->getWordsAsString();
+            $operators = $search->getOperators()->toArray();
+            if ('' !== $words) {
+                session()->flash('warning', trans('firefly.rule_from_search_words', ['string' => $words]));
+                array_push($operators, ['type' => 'description_contains', 'value' => $words]);
+            }
+            $oldTriggers = $this->parseFromOperators($operators);
+        }
+
         // restore actions and triggers from old input:
         if ($request->old()) {
             $oldTriggers = $this->getPreviousTriggers($request);
             $oldActions  = $this->getPreviousActions($request);
         }
 
-        $triggerCount = \count($oldTriggers);
-        $actionCount  = \count($oldActions);
+        $triggerCount = count($oldTriggers);
+        $actionCount  = count($oldActions);
         $subTitleIcon = 'fa-clone';
 
         // title depends on whether or not there is a rule group:
-        $subTitle = (string)trans('firefly.make_new_rule_no_group');
+        $subTitle = (string) trans('firefly.make_new_rule_no_group');
         if (null !== $ruleGroup) {
-            $subTitle = (string)trans('firefly.make_new_rule', ['title' => $ruleGroup->title]);
+            $subTitle = (string) trans('firefly.make_new_rule', ['title' => $ruleGroup->title]);
         }
 
         // flash old data
@@ -109,7 +127,8 @@ class CreateController extends Controller
         session()->forget('rules.create.fromStore');
 
         return view(
-            'rules.rule.create', compact('subTitleIcon', 'oldTriggers', 'preFilled', 'oldActions', 'triggerCount', 'actionCount', 'ruleGroup', 'subTitle')
+            'rules.rule.create',
+            compact('subTitleIcon', 'oldTriggers', 'preFilled', 'oldActions', 'triggerCount', 'actionCount', 'ruleGroup', 'subTitle')
         );
     }
 
@@ -119,20 +138,18 @@ class CreateController extends Controller
      * @param Request $request
      * @param Bill    $bill
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     * @return Factory|View
      */
     public function createFromBill(Request $request, Bill $bill)
     {
-        $request->session()->flash('info', (string)trans('firefly.instructions_rule_from_bill', ['name' => $bill->name]));
+        $request->session()->flash('info', (string) trans('firefly.instructions_rule_from_bill', ['name' => e($bill->name)]));
 
         $this->createDefaultRuleGroup();
         $this->createDefaultRule();
         $preFilled = [
             'strict'      => true,
-            'title'       => (string)trans('firefly.new_rule_for_bill_title', ['name' => $bill->name]),
-            'description' => (string)trans('firefly.new_rule_for_bill_description', ['name' => $bill->name]),
+            'title'       => (string) trans('firefly.new_rule_for_bill_title', ['name' => $bill->name]),
+            'description' => (string) trans('firefly.new_rule_for_bill_description', ['name' => $bill->name]),
         ];
 
         // make triggers and actions from the bill itself.
@@ -141,12 +158,18 @@ class CreateController extends Controller
         $oldTriggers = $this->getTriggersForBill($bill);
         $oldActions  = $this->getActionsForBill($bill);
 
-        $triggerCount = \count($oldTriggers);
-        $actionCount  = \count($oldActions);
+        // restore actions and triggers from old input:
+        if ($request->old()) {
+            $oldTriggers = $this->getPreviousTriggers($request);
+            $oldActions  = $this->getPreviousActions($request);
+        }
+
+        $triggerCount = count($oldTriggers);
+        $actionCount  = count($oldActions);
         $subTitleIcon = 'fa-clone';
 
         // title depends on whether or not there is a rule group:
-        $subTitle = (string)trans('firefly.make_new_rule_no_group');
+        $subTitle = (string) trans('firefly.make_new_rule_no_group');
 
         // flash old data
         $request->session()->flash('preFilled', $preFilled);
@@ -158,8 +181,73 @@ class CreateController extends Controller
         session()->forget('rules.create.fromStore');
 
         return view(
-            'rules.rule.create', compact('subTitleIcon', 'oldTriggers', 'preFilled', 'oldActions', 'triggerCount', 'actionCount', 'subTitle')
+            'rules.rule.create',
+            compact('subTitleIcon', 'oldTriggers', 'preFilled', 'oldActions', 'triggerCount', 'actionCount', 'subTitle')
         );
+    }
+
+    /**
+     * @param Request            $request
+     * @param TransactionJournal $journal
+     */
+    public function createFromJournal(Request $request, TransactionJournal $journal)
+    {
+        $request->session()->flash('info', (string) trans('firefly.instructions_rule_from_journal', ['name' => e($journal->name)]));
+
+        $subTitleIcon = 'fa-clone';
+        $subTitle     = (string) trans('firefly.make_new_rule_no_group');
+
+        // get triggers and actions for journal.
+        $oldTriggers = $this->getTriggersForJournal($journal);
+        $oldActions  = [];
+
+        $this->createDefaultRuleGroup();
+        $this->createDefaultRule();
+
+        // collect pre-filled information:
+        $preFilled = [
+            'strict'      => true,
+            'title'       => (string) trans('firefly.new_rule_for_journal_title', ['description' => $journal->description]),
+            'description' => (string) trans('firefly.new_rule_for_journal_description', ['description' => $journal->description]),
+        ];
+
+        // restore actions and triggers from old input:
+        if ($request->old()) {
+            $oldTriggers = $this->getPreviousTriggers($request);
+            $oldActions  = $this->getPreviousActions($request);
+        }
+
+        $triggerCount = count($oldTriggers);
+        $actionCount  = count($oldActions);
+
+        // flash old data
+        $request->session()->flash('preFilled', $preFilled);
+
+        // put previous url in session if not redirect from store (not "create another").
+        if (true !== session('rules.create.fromStore')) {
+            $this->rememberPreviousUri('rules.create.uri');
+        }
+        session()->forget('rules.create.fromStore');
+
+        return view(
+            'rules.rule.create',
+            compact('subTitleIcon', 'oldTriggers', 'preFilled', 'oldActions', 'triggerCount', 'actionCount', 'subTitle')
+        );
+    }
+
+    /**
+     * @param Rule $rule
+     *
+     * @return RedirectResponse
+     */
+    public function duplicate(Rule $rule): RedirectResponse
+    {
+        /** @var Rule $newRule */
+        $newRule = $this->ruleRepos->duplicate($rule);
+
+        session()->flash('success', trans('firefly.duplicated_rule', ['title' => $rule->title, 'newTitle' => $newRule->title]));
+
+        return redirect(route('rules.index'));
     }
 
     /**
@@ -167,29 +255,29 @@ class CreateController extends Controller
      *
      * @param RuleFormRequest $request
      *
-     * @return RedirectResponse|\Illuminate\Routing\Redirector
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     * @return RedirectResponse|Redirector
+     *
      */
     public function store(RuleFormRequest $request)
     {
         $data = $request->getRuleData();
         $rule = $this->ruleRepos->store($data);
-        session()->flash('success', (string)trans('firefly.stored_new_rule', ['title' => $rule->title]));
+        session()->flash('success', (string) trans('firefly.stored_new_rule', ['title' => $rule->title]));
         app('preferences')->mark();
 
         // redirect to show bill.
-        if ('true' === $request->get('return_to_bill') && (int)$request->get('bill_id') > 0) {
-            return redirect(route('bills.show', [(int)$request->get('bill_id')])); // @codeCoverageIgnore
+        if ('true' === $request->get('return_to_bill') && (int) $request->get('bill_id') > 0) {
+            return redirect(route('bills.show', [(int) $request->get('bill_id')])); // @codeCoverageIgnore
         }
 
         // redirect to new bill creation.
-        if ((int)$request->get('bill_id') > 0) {
+        if ((int) $request->get('bill_id') > 0) {
             return redirect($this->getPreviousUri('bills.create.uri')); // @codeCoverageIgnore
         }
 
         $redirect = redirect($this->getPreviousUri('rules.create.uri'));
 
-        if (1 === (int)$request->get('create_another')) {
+        if (1 === (int) $request->get('create_another')) {
             // @codeCoverageIgnoreStart
             session()->put('rules.create.fromStore', true);
             $redirect = redirect(route('rules.create', [$data['rule_group_id']]))->withInput();
@@ -197,80 +285,5 @@ class CreateController extends Controller
         }
 
         return $redirect;
-    }
-
-    /**
-     * Get actions based on a bill.
-     *
-     * @param Bill $bill
-     *
-     * @return array
-     */
-    protected function getActionsForBill(Bill $bill): array // get info and augument
-    {
-        try {
-            $result = view(
-                'rules.partials.action',
-                [
-                    'oldAction'  => 'link_to_bill',
-                    'oldValue'   => $bill->name,
-                    'oldChecked' => false,
-                    'count'      => 1,
-                ]
-            )->render();
-            // @codeCoverageIgnoreStart
-        } catch (Throwable $e) {
-            Log::error(sprintf('Throwable was thrown in getActionsForBill(): %s', $e->getMessage()));
-            Log::error($e->getTraceAsString());
-            $result = 'Could not render view. See log files.';
-        }
-
-        // @codeCoverageIgnoreEnd
-
-        return [$result];
-    }
-
-    /**
-     * Create fake triggers to match the bill's properties
-     *
-     * @param Bill $bill
-     *
-     * @return array
-     */
-    protected function getTriggersForBill(Bill $bill): array // get info and augument
-    {
-        $result   = [];
-        $triggers = ['currency_is', 'amount_more', 'amount_less', 'description_contains'];
-        $values   = [
-            $bill->transactionCurrency()->first()->name,
-            round((float)$bill->amount_min, 12),
-            round((float)$bill->amount_max, 12),
-            $bill->name,
-        ];
-        foreach ($triggers as $index => $trigger) {
-            try {
-                $string = view(
-                    'rules.partials.trigger',
-                    [
-                        'oldTrigger' => $trigger,
-                        'oldValue'   => $values[$index],
-                        'oldChecked' => false,
-                        'count'      => $index + 1,
-                    ]
-                )->render();
-                // @codeCoverageIgnoreStart
-            } catch (Throwable $e) {
-
-                Log::debug(sprintf('Throwable was thrown in getTriggersForBill(): %s', $e->getMessage()));
-                Log::debug($e->getTraceAsString());
-                $string = '';
-                // @codeCoverageIgnoreEnd
-            }
-            if ('' !== $string) {
-                $result[] = $string;
-            }
-        }
-
-        return $result;
     }
 }

@@ -4,7 +4,7 @@
 {% endblock %}
 {% block content %}
 
-    <form action="{{ route('recurring.store') }}" method="post" id="store" class="form-horizontal">
+    <form action="{{ route('recurring.store') }}" method="post" id="store" class="form-horizontal" enctype="multipart/form-data">
         <input type="hidden" name="_token" value="{{ csrf_token() }}"/>
         {# row with recurrence information #}
         <div class="row">
@@ -17,7 +17,8 @@
                     </div>
                     <div class="box-body">
                         {{ ExpandedForm.text('title') }}
-                        {{ ExpandedForm.date('first_date',null, {helpText: trans('firefly.help_first_date')}) }}
+                        {{ preFilled.first_date.format('Y-m-d') }}
+                        {{ ExpandedForm.date('first_date',null, {helpText: trans('firefly.help_first_date'), min: preFilled.first_date}) }}
                         {{ ExpandedForm.select('repetition_type', [], null, {helpText: trans('firefly.change_date_other_options')}) }}
                         {{ ExpandedForm.number('skip', 0) }}
                         {{ ExpandedForm.select('weekend', weekendResponses, null, {helpText: trans('firefly.help_weekend')}) }}
@@ -50,8 +51,8 @@
 
                         {# only correct way to do active checkbox #}
                         {{ ExpandedForm.checkbox('active', 1) }}
-
                         {{ ExpandedForm.checkbox('apply_rules',1) }}
+                        {{ ExpandedForm.file('attachments[]', {'multiple': 'multiple','helpText': trans('firefly.upload_max_file_size', {'size': uploadSize|filesize}) }) }}
                     </div>
                 </div>
             </div>
@@ -85,20 +86,23 @@
 
                         {{ ExpandedForm.text('transaction_description') }}
                         {# transaction information (mandatory) #}
-                        {{ ExpandedForm.currencyList('transaction_currency_id', defaultCurrency.id) }}
-                        {{ ExpandedForm.amountNoCurrency('amount', []) }}
+                        {{ CurrencyForm.currencyList('transaction_currency_id', defaultCurrency.id) }}
+                        {{ ExpandedForm.amountNoCurrency('amount') }}
 
                         {# source account if withdrawal, or if transfer: #}
-                        {{ ExpandedForm.activeLongAccountList('source_id', null, {label: trans('form.asset_source_account')}) }}
+                        {{ AccountForm.longAccountList('source_id', null, {label: trans('form.asset_source_account')}) }}
 
-                        {# source account name for deposits: #}
-                        {{ ExpandedForm.text('source_name', null, {label: trans('form.revenue_account')}) }}
+                        {# for deposits, a drop down with revenue accounts, loan debt cash and mortgage #}
+                        {{ AccountForm.activeDepositDestinations('deposit_source_id', null, {label: trans('form.deposit_source_id')}) }}
 
                         {# destination if deposit or transfer: #}
-                        {{ ExpandedForm.activeLongAccountList('destination_id', null, {label: trans('form.asset_destination_account')} ) }}
+                        {{ AccountForm.longAccountList('destination_id', null, {label: trans('form.asset_destination_account')} ) }}
 
                         {# destination account name for withdrawals #}
-                        {{ ExpandedForm.text('destination_name', null, {label: trans('form.expense_account')}) }}
+                        {#{{ ExpandedForm.text('destination_name', null, {label: trans('form.expense_account')}) }} #}
+
+                        {# NEW for withdrawals, also a drop down with expense accounts, loans, debts, mortgages or (cash). #}
+                        {{ AccountForm.activeWithdrawalDestinations('withdrawal_destination_id', null, {label: trans('form.withdrawal_destination_id')}) }}
                     </div>
                 </div>
             </div>
@@ -111,8 +115,8 @@
                     </div>
                     <div class="box-body">
                         {# transaction information (optional) #}
-                        {{ ExpandedForm.currencyListEmpty('foreign_currency_id', 0) }}
-                        {{ ExpandedForm.amountNoCurrency('foreign_amount', []) }}
+                        {{ CurrencyForm.currencyListEmpty('foreign_currency_id') }}
+                        {{ ExpandedForm.amountNoCurrency('foreign_amount') }}
 
                         {# BUDGET ONLY WHEN CREATING A WITHDRAWAL #}
                         {% if budgets|length > 1 %}
@@ -128,7 +132,7 @@
                         {{ ExpandedForm.text('tags') }}
 
                         {# RELATE THIS TRANSFER TO A PIGGY BANK #}
-                        {{ ExpandedForm.piggyBankList('piggy_bank_id',0) }}
+                        {{ PiggyBankForm.piggyBankList('piggy_bank_id') }}
                     </div>
                 </div>
             </div>
@@ -136,7 +140,7 @@
 
         {# row with submit stuff. #}
         <div class="row">
-            <div class="col-lg-6 col-md-6 col-sm-12 col-lg-offset-6 lg-md-offset-6">
+            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
                 <div class="box">
                     <div class="box-header with-border">
                         <h3 class="box-title">{{ 'options'|_ }}</h3>
@@ -173,7 +177,7 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h4 class="modal-title">Calendar view yay</h4>
+                <h4 class="modal-title">{{ 'recurring_calendar_view'|_ }}</h4>
             </div>
             <div class="modal-body">
                 <div id="recurring_calendar" style="max-width: 400px;margin: 0 auto;">
@@ -193,19 +197,19 @@
 
 {% endblock %}
 {% block scripts %}
-    <script type="text/javascript" src="v1/js/lib/modernizr-custom.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/typeahead/typeahead.bundle.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/ff/common/autocomplete.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/bootstrap-tagsinput.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/jquery-ui.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="lib/fc/fullcalendar.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript">
+    <script type="text/javascript" src="v1/js/lib/modernizr-custom.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/lib/typeahead/typeahead.bundle.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/ff/common/autocomplete.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/lib/bootstrap-tagsinput.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/lib/jquery-ui.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/lib/fc/fullcalendar.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" nonce="{{ JS_NONCE }}">
         var transactionType = "{{ preFilled.transaction_type }}";
         var suggestUri = "{{ route('recurring.suggest') }}";
         var eventsUri = "{{ route('recurring.events') }}";
         var oldRepetitionType= "{{ oldRepetitionType }}";
     </script>
-    <script type="text/javascript" src="v1/js/ff/recurring/create.js?v={{ FF_VERSION }}"></script>
+    <script type="text/javascript" src="v1/js/ff/recurring/create.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
 {% endblock %}
 
 {% block styles %}

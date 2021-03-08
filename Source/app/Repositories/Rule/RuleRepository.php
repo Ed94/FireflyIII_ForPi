@@ -1,22 +1,22 @@
 <?php
 /**
  * RuleRepository.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -27,6 +27,7 @@ use FireflyIII\Models\Rule;
 use FireflyIII\Models\RuleAction;
 use FireflyIII\Models\RuleGroup;
 use FireflyIII\Models\RuleTrigger;
+use FireflyIII\Support\Search\OperatorQuerySearch;
 use FireflyIII\User;
 use Illuminate\Support\Collection;
 use Log;
@@ -34,22 +35,11 @@ use Log;
 /**
  * Class RuleRepository.
  *
- * @SuppressWarnings(PHPMD.TooManyPublicMethods)
  */
 class RuleRepository implements RuleRepositoryInterface
 {
     /** @var User */
     private $user;
-
-    /**
-     * Constructor.
-     */
-    public function __construct()
-    {
-        if ('testing' === config('app.env')) {
-            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', \get_class($this)));
-        }
-    }
 
     /**
      * @return int
@@ -114,33 +104,13 @@ class RuleRepository implements RuleRepositoryInterface
     }
 
     /**
-     * Get the rules for a user tailored to the import process.
-     *
-     * @return Collection
-     */
-    public function getForImport(): Collection
-    {
-        return Rule::distinct()
-                   ->where('rules.user_id', $this->user->id)
-                   ->leftJoin('rule_groups', 'rule_groups.id', '=', 'rules.rule_group_id')
-                   ->leftJoin('rule_triggers', 'rules.id', '=', 'rule_triggers.rule_id')
-                   ->where('rule_groups.active', 1)
-                   ->where('rule_triggers.trigger_type', 'user_action')
-                   ->where('rule_triggers.trigger_value', 'store-journal')
-                   ->where('rules.active', 1)
-                   ->orderBy('rule_groups.order', 'ASC')
-                   ->orderBy('rules.order', 'ASC')
-                   ->get(['rules.*', 'rule_groups.order']);
-    }
-
-    /**
      * @param RuleGroup $ruleGroup
      *
      * @return int
      */
     public function getHighestOrderInRuleGroup(RuleGroup $ruleGroup): int
     {
-        return (int)$ruleGroup->rules()->max('order');
+        return (int) $ruleGroup->rules()->max('order');
     }
 
     /**
@@ -277,7 +247,7 @@ class RuleRepository implements RuleRepositoryInterface
      */
     public function resetRulesInGroupOrder(RuleGroup $ruleGroup): bool
     {
-        $ruleGroup->rules()->whereNotNull('deleted_at')->update(['order' => 0]);
+        $ruleGroup->rules()->withTrashed()->whereNotNull('deleted_at')->update(['order' => 0]);
 
         $set   = $ruleGroup->rules()
                            ->orderBy('order', 'ASC')
@@ -325,7 +295,7 @@ class RuleRepository implements RuleRepositoryInterface
         $rule->strict          = $data['strict'];
         $rule->stop_processing = $data['stop_processing'];
         $rule->title           = $data['title'];
-        $rule->description     = \strlen($data['description']) > 0 ? $data['description'] : null;
+        $rule->description     = strlen($data['description']) > 0 ? $data['description'] : null;
 
         $rule->save();
 
@@ -387,25 +357,29 @@ class RuleRepository implements RuleRepositoryInterface
     public function update(Rule $rule, array $data): Rule
     {
         // update rule:
-        $rule->rule_group_id   = $data['rule_group_id'];
-        $rule->active          = $data['active'];
-        $rule->stop_processing = $data['stop_processing'];
-        $rule->title           = $data['title'];
-        $rule->strict          = $data['strict'] ?? false;
-        $rule->description     = $data['description'];
+
+        $rule->rule_group_id   = $data['rule_group_id'] ?? $rule->rule_group_id;
+        $rule->active          = $data['active'] ?? $rule->active;
+        $rule->stop_processing = $data['stop_processing'] ?? $rule->stop_processing;
+        $rule->title           = $data['title'] ?? $rule->title;
+        $rule->strict          = $data['strict'] ?? $rule->strict;
+        $rule->description     = $data['description'] ?? $rule->description;
         $rule->save();
 
-        // delete triggers:
-        $rule->ruleTriggers()->delete();
+        if (null !== $data['triggers']) {
+            // delete triggers:
+            $rule->ruleTriggers()->delete();
 
-        // delete actions:
-        $rule->ruleActions()->delete();
+            // recreate triggers:
+            $this->storeTriggers($rule, $data);
+        }
+        if (null !== $data['actions']) {
+            // delete actions:
+            $rule->ruleActions()->delete();
 
-        // recreate triggers:
-        $this->storeTriggers($rule, $data);
-
-        // recreate actions:
-        $this->storeActions($rule, $data);
+            // recreate actions:
+            $this->storeActions($rule, $data);
+        }
 
         return $rule;
     }
@@ -429,6 +403,7 @@ class RuleRepository implements RuleRepositoryInterface
                 'stop_processing' => $stopProcessing,
                 'order'           => $order,
             ];
+            app('telemetry')->feature('rules.actions.uses_action', $action['type']);
 
             $this->storeAction($rule, $actionValues);
         }
@@ -465,11 +440,129 @@ class RuleRepository implements RuleRepositoryInterface
                 'stop_processing' => $stopProcessing,
                 'order'           => $order,
             ];
+            app('telemetry')->feature('rules.triggers.uses_trigger', $trigger['type']);
 
             $this->storeTrigger($rule, $triggerValues);
             ++$order;
         }
 
         return true;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function duplicate(Rule $rule): Rule
+    {
+        $newRule        = $rule->replicate();
+        $newRule->title = (string) trans('firefly.rule_copy_of', ['title' => $rule->title]);
+        $newRule->save();
+
+        // replicate all triggers
+        /** @var RuleTrigger $trigger */
+        foreach ($rule->ruleTriggers as $trigger) {
+            $newTrigger          = $trigger->replicate();
+            $newTrigger->rule_id = $newRule->id;
+            $newTrigger->save();
+        }
+
+        // replicate all actions
+        /** @var RuleAction $action */
+        foreach ($rule->ruleActions as $action) {
+            $newAction          = $action->replicate();
+            $newAction->rule_id = $newRule->id;
+            $newAction->save();
+        }
+
+        return $newRule;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function moveRule(Rule $rule, RuleGroup $ruleGroup, int $order): Rule
+    {
+        $rule->order = $order;
+        if ($rule->rule_group_id !== $ruleGroup->id) {
+            $rule->rule_group_id = $ruleGroup->id;
+        }
+        $rule->save();
+
+        return $rule;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getStoreRules(): Collection
+    {
+        $collection = $this->user->rules()
+                                 ->leftJoin('rule_groups', 'rule_groups.id', '=', 'rules.rule_group_id')
+                                 ->where('rules.active', 1)
+                                 ->where('rule_groups.active', 1)
+                                 ->orderBy('rule_groups.order', 'ASC')
+                                 ->orderBy('rules.order', 'ASC')
+                                 ->orderBy('rules.id', 'ASC')
+                                 ->with(['ruleGroup', 'ruleTriggers'])->get(['rules.*']);
+        $filtered   = new Collection;
+        /** @var Rule $rule */
+        foreach ($collection as $rule) {
+            /** @var RuleTrigger $ruleTrigger */
+            foreach ($rule->ruleTriggers as $ruleTrigger) {
+                if ('user_action' === $ruleTrigger->trigger_type && 'store-journal' === $ruleTrigger->trigger_value) {
+                    $filtered->push($rule);
+                }
+            }
+        }
+        return $filtered;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getUpdateRules(): Collection
+    {
+        $collection = $this->user->rules()
+                                 ->leftJoin('rule_groups', 'rule_groups.id', '=', 'rules.rule_group_id')
+                                 ->where('rules.active', 1)
+                                 ->where('rule_groups.active', 1)
+                                 ->orderBy('rule_groups.order', 'ASC')
+                                 ->orderBy('rules.order', 'ASC')
+                                 ->orderBy('rules.id', 'ASC')
+                                 ->with(['ruleGroup', 'ruleTriggers'])->get();
+        $filtered   = new Collection;
+        /** @var Rule $rule */
+        foreach ($collection as $rule) {
+            /** @var RuleTrigger $ruleTrigger */
+            foreach ($rule->ruleTriggers as $ruleTrigger) {
+                if ('user_action' === $ruleTrigger->trigger_type && 'update-journal' === $ruleTrigger->trigger_value) {
+                    $filtered->push($rule);
+                }
+            }
+        }
+        return $filtered;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getSearchQuery(Rule $rule): string
+    {
+        $params = [];
+        /** @var RuleTrigger $trigger */
+        foreach ($rule->ruleTriggers as $trigger) {
+            if ('user_action' === $trigger->trigger_type) {
+                continue;
+            }
+            $needsContext = config(sprintf('firefly.search.operators.%s.needs_context', $trigger->trigger_type)) ?? true;
+            if (false === $needsContext) {
+                $params[] = sprintf('%s:true', OperatorQuerySearch::getRootOperator($trigger->trigger_type));
+            }
+            if (true === $needsContext) {
+                $params[] = sprintf('%s:"%s"', OperatorQuerySearch::getRootOperator($trigger->trigger_type), $trigger->trigger_value);
+            }
+        }
+        return implode(' ', $params);
+
     }
 }

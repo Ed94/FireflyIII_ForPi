@@ -1,22 +1,22 @@
 <?php
 /**
  * TransactionLinkRequest.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -25,24 +25,20 @@ namespace FireflyIII\Api\V1\Requests;
 
 use FireflyIII\Repositories\Journal\JournalRepositoryInterface;
 use FireflyIII\Repositories\LinkType\LinkTypeRepositoryInterface;
+use FireflyIII\Support\Request\ChecksLogin;
+use FireflyIII\Support\Request\ConvertsDataTypes;
+use FireflyIII\User;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 /**
- *
  * Class TransactionLinkRequest
  */
-class TransactionLinkRequest extends Request
+class TransactionLinkRequest extends FormRequest
 {
-    /**
-     * Authorize logged in users.
-     *
-     * @return bool
-     */
-    public function authorize(): bool
-    {
-        // Only allow authenticated users
-        return auth()->check();
-    }
+    use ConvertsDataTypes, ChecksLogin;
+
+
 
     /**
      * Get all data from the request.
@@ -56,12 +52,11 @@ class TransactionLinkRequest extends Request
             'link_type_name' => $this->string('link_type_name'),
             'inward_id'      => $this->integer('inward_id'),
             'outward_id'     => $this->integer('outward_id'),
-            'notes'          => $this->string('notes'),
+            'notes'          => $this->nlString('notes'),
         ];
     }
 
     /**
-     *
      * The rules that the incoming request must be matched against.
      *
      * @return array
@@ -80,7 +75,7 @@ class TransactionLinkRequest extends Request
     /**
      * Configure the validator instance.
      *
-     * @param  Validator $validator
+     * @param Validator $validator
      *
      * @return void
      */
@@ -98,17 +93,19 @@ class TransactionLinkRequest extends Request
      */
     private function validateExistingLink(Validator $validator): void
     {
+        /** @var User $user */
+        $user = auth()->user();
         /** @var LinkTypeRepositoryInterface $repository */
         $repository = app(LinkTypeRepositoryInterface::class);
-        $repository->setUser(auth()->user());
+        $repository->setUser($user);
 
         /** @var JournalRepositoryInterface $journalRepos */
         $journalRepos = app(JournalRepositoryInterface::class);
-        $journalRepos->setUser(auth()->user());
+        $journalRepos->setUser($user);
 
         $data      = $validator->getData();
-        $inwardId  = (int)($data['inward_id'] ?? 0);
-        $outwardId = (int)($data['outward_id'] ?? 0);
+        $inwardId  = (int) ($data['inward_id'] ?? 0);
+        $outwardId = (int) ($data['outward_id'] ?? 0);
         $inward    = $journalRepos->findNull($inwardId);
         $outward   = $journalRepos->findNull($outwardId);
 

@@ -2,22 +2,22 @@
 
 /**
  * validation.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -25,6 +25,7 @@ declare(strict_types=1);
 return [
     'iban'                           => 'Este não é um válido IBAN.',
     'zero_or_more'                   => 'O valor não pode ser negativo.',
+    'date_or_time'                   => 'O valor deve ser uma data válida (ISO 8601).',
     'source_equals_destination'      => 'A conta de origem é igual à conta de destino.',
     'unique_account_number_for_user' => 'Parece que este número de conta já está em uso.',
     'unique_iban_for_user'           => 'Parece que este IBAN já está em uso.',
@@ -35,12 +36,17 @@ return [
     'file_attached'                  => 'Arquivo carregado com sucesso ":name".',
     'must_exist'                     => 'O ID no campo :attribute não existe no banco de dados.',
     'all_accounts_equal'             => 'Todas as contas neste campo devem ser iguais.',
+    'group_title_mandatory'          => 'Um título de grupo é obrigatório quando existe mais de uma transação.',
+    'transaction_types_equal'        => 'Todas as divisões devem ser do mesmo tipo.',
+    'invalid_transaction_type'       => 'Tipo de transação inválido.',
     'invalid_selection'              => 'Sua seleção é inválida.',
     'belongs_user'                   => 'Esse valor é inválido para este campo.',
     'at_least_one_transaction'       => 'Precisa de ao menos uma transação.',
     'at_least_one_repetition'        => 'Precisa de ao menos uma repetição.',
     'require_repeat_until'           => 'É necessário ou um número de repetições ou uma data de término (repetir até). Não ambos.',
     'require_currency_info'          => 'O conteúdo deste campo é inválido sem informações de moeda.',
+    'not_transfer_account'           => 'Esta não é uma conta que possa ser usada para transferências.',
+    'require_currency_amount'        => 'O conteúdo deste campo é inválido sem a informação de moeda estrangeira.',
     'equal_description'              => 'A descrição da transação não pode ser igual à descrição global.',
     'file_invalid_mime'              => 'Arquivo ":name" é do tipo ":mime" que não é aceito como um novo upload.',
     'file_too_large'                 => 'Arquivo ":name" é muito grande.',
@@ -51,7 +57,6 @@ return [
     'at_least_one_action'            => 'A regra deve ter pelo menos uma ação.',
     'base64'                         => 'Isto não é válido na codificação de dados base64.',
     'model_id_invalid'               => 'A identificação especificada parece inválida para este modelo.',
-    'more'                           => ':attribute deve ser maior do que zero.',
     'less'                           => ':attribute deve ser menor do que 10.000.000',
     'active_url'                     => 'O campo :attribute não contém um URL válido.',
     'after'                          => 'O campo :attribute deverá conter uma data posterior a :date.',
@@ -122,28 +127,35 @@ return [
     'in_array'                       => 'O campo :attribute não existe em :other.',
     'present'                        => 'O campo :attribute deve estar presente.',
     'amount_zero'                    => 'O montante total não pode ser zero.',
+    'current_target_amount'          => 'O valor atual deve ser menor do que o valor pretendido.',
     'unique_piggy_bank_for_user'     => 'O nome do cofrinho deve ser único.',
-    'secure_password'                => 'Esta nao e uma password segura. Tenta de novo por favor. Para mais informacoes visita https://bit.ly/FF3-password-security',
-    'valid_recurrence_rep_type'      => 'Tipo de repetição inválido para transações recorrentes.',
-    'valid_recurrence_rep_moment'    => 'Momento de repetição inválido para esse tipo de repetição.',
-    'invalid_account_info'           => 'Informação de conta inválida.',
-    'attributes'                     => [
+    'unique_object_group'            => 'O nome do grupo deve ser único',
+    'starts_with'                    => 'O valor deve começar com :values.',
+    'unique_webhook'                 => 'Você já tem um webhook com esses valores.',
+    'unique_existing_webhook'        => 'Você já tem outro webhook com esses valores.',
+
+    'secure_password'             => 'Esta não é uma senha segura. Por favor, tente novamente. Para mais informações, visite https://bit.ly/FF3-password-security',
+    'valid_recurrence_rep_type'   => 'Tipo de repetição inválido para transações recorrentes.',
+    'valid_recurrence_rep_moment' => 'Momento de repetição inválido para esse tipo de repetição.',
+    'invalid_account_info'        => 'Informação de conta inválida.',
+    'attributes'                  => [
         'email'                   => 'endereço de e-mail',
         'description'             => 'descrição',
-        'amount'                  => 'quantidade',
+        'amount'                  => 'valor',
+        'transactions.*.amount'   => 'valor da transação',
         'name'                    => 'nome',
         'piggy_bank_id'           => 'ID do cofrinho',
         'targetamount'            => 'quantidade alvo',
-        'openingBalanceDate'      => 'data do Saldo inicial',
-        'openingBalance'          => 'saldo inicial',
+        'opening_balance_date'    => 'data do saldo inicial',
+        'opening_balance'         => 'saldo inicial',
         'match'                   => 'coincidente',
         'amount_min'              => 'valor mínimo',
         'amount_max'              => 'valor máximo',
         'title'                   => 'título',
-        'tag'                     => 'identificador',
+        'tag'                     => 'tag',
         'transaction_description' => 'Descrição da transação',
         'rule-action-value.1'     => 'valor de ação de regra #1',
-        'rule-action-value.2'     => 'valor de ação de regra #2',
+        'rule-action-value.2'     => 'valor de ação da regra #2',
         'rule-action-value.3'     => 'valor de ação de regra #3',
         'rule-action-value.4'     => 'valor de ação de regra #4',
         'rule-action-value.5'     => 'valor de ação de regra #5',
@@ -163,4 +175,39 @@ return [
         'rule-trigger.4'          => 'disparador da regra #4',
         'rule-trigger.5'          => 'disparador da regra #5',
     ],
+
+    // validation of accounts:
+    'withdrawal_source_need_data' => 'É necessário obter um ID de uma conta de origem válida e/ou um nome de conta de origem válido para continuar.',
+    'withdrawal_source_bad_data'  => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+    'withdrawal_dest_need_data'   => 'É necessário obter um ID de uma conta de origem válida e/ou um nome de conta de origem válido para continuar.',
+    'withdrawal_dest_bad_data'    => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+
+    'deposit_source_need_data' => 'É necessário obter um ID de uma conta de origem válida e/ou um nome de conta de origem válido para continuar.',
+    'deposit_source_bad_data'  => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+    'deposit_dest_need_data'   => 'É necessário obter obter um ID de conta de destino válido e/ou nome de conta de destino válido para continuar.',
+    'deposit_dest_bad_data'    => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+    'deposit_dest_wrong_type'  => 'A conta de destino enviada não é do tipo certo.',
+
+    'transfer_source_need_data' => 'É necessário obter um ID de uma conta de origem válida e/ou um nome de conta de origem válido para continuar.',
+    'transfer_source_bad_data'  => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+    'transfer_dest_need_data'   => 'É necessário obter obter um ID de conta de destino válido e/ou nome de conta de destino válido para continuar.',
+    'transfer_dest_bad_data'    => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+    'need_id_in_edit'           => 'Cada divisão deve ter transaction_journal_id (ID válido ou 0).',
+
+    'ob_source_need_data' => 'É necessário obter um ID de uma conta de origem válida e/ou um nome de conta de origem válido para continuar.',
+    'ob_dest_need_data'   => 'É necessário obter um ID de uma conta de origem válida e/ou um nome de conta de origem válido para continuar.',
+    'ob_dest_bad_data'    => 'Não foi possível encontrar uma conta de destino válida ao pesquisar por ID ":id" ou nome ":name".',
+
+    'generic_invalid_source'      => 'Você não pode usar esta conta como conta de origem.',
+    'generic_invalid_destination' => 'Você não pode usar esta conta como conta de destino.',
+
+    'gte.numeric' => ':attribute deve ser maior ou igual a :value.',
+    'gt.numeric'  => 'The :attribute must be greater than :value.',
+    'gte.file'    => 'The :attribute must be greater than or equal to :value kilobytes.',
+    'gte.string'  => 'The :attribute must be greater than or equal to :value characters.',
+    'gte.array'   => 'The :attribute must have :value items or more.',
+
+    'amount_required_for_auto_budget' => 'The amount is required.',
+    'auto_budget_amount_positive'     => 'A quantidade deve ser maior do que zero.',
+    'auto_budget_period_mandatory'    => 'The auto budget period is a mandatory field.',
 ];

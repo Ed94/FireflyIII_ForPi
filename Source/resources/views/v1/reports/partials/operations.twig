@@ -1,19 +1,26 @@
-<table class="table table-hover">
+<table class="table table-hover sortable">
+    <thead>
     <tr>
-        <td>{{ 'money_flowing_in'|_ }}</td>
-        <td style="text-align: right;">{{ incomeSum|formatAmount }}</td>
+        <th data-defaultsign="az">{{'currency'|_}}</th>
+        <th data-defaultsign="_19">{{ 'money_flowing_in'|_ }}</th>
+        <th data-defaultsign="_19">{{ 'money_flowing_out'|_ }}</th>
+        <th data-defaultsign="_19">{{ 'difference'|_ }}</th>
     </tr>
+    </thead>
+    <tbody>
+    {% for sum in sums %}
     <tr>
-        <td>{{ 'money_flowing_out'|_ }}</td>
-        <td style="text-align: right;">{{ expensesSum|formatAmount }}</td>
-    </tr>
-    <tr>
-        <td>{{ 'difference'|_ }}</td>
-        <td style="text-align: right;">{{ (incomeSum + expensesSum)|formatAmount }}</td>
-    </tr>
-    <tr>
-        <td colspan="2">
-            <small class="text-warning">{{ 'sum_in_default_currency'|_ }}</small>
+        <td>{{ sum.currency_name }} ({{ sum.currency_symbol }})</td>
+        <td data-value="{{ sum.in }}">
+            {{ formatAmountBySymbol(sum.in, sum.currency_symbol, sum.currency_decimal_places) }}
+        </td>
+        <td data-value="{{ sum.out }}">
+            {{ formatAmountBySymbol(sum.out, sum.currency_symbol, sum.currency_decimal_places) }}
+        </td>
+        <td data-value="{{ sum.sum }}">
+            {{ formatAmountBySymbol(sum.sum, sum.currency_symbol, sum.currency_decimal_places) }}
         </td>
     </tr>
+    {% endfor %}
+    </tbody>
 </table>

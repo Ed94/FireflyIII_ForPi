@@ -1,22 +1,22 @@
 <?php
 /**
  * ReportController.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -24,13 +24,15 @@ namespace FireflyIII\Http\Controllers\Chart;
 
 use Carbon\Carbon;
 use FireflyIII\Generator\Chart\Basic\GeneratorInterface;
+use FireflyIII\Helpers\Collector\GroupCollectorInterface;
 use FireflyIII\Helpers\Report\NetWorthInterface;
 use FireflyIII\Http\Controllers\Controller;
 use FireflyIII\Models\Account;
+use FireflyIII\Models\TransactionType;
 use FireflyIII\Repositories\Account\AccountRepositoryInterface;
-use FireflyIII\Repositories\Account\AccountTaskerInterface;
 use FireflyIII\Support\CacheProperties;
 use FireflyIII\Support\Http\Controllers\BasicDataSupport;
+use FireflyIII\Support\Http\Controllers\ChartGeneration;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 use Log;
@@ -40,12 +42,14 @@ use Log;
  */
 class ReportController extends Controller
 {
-    use BasicDataSupport;
+    use BasicDataSupport, ChartGeneration;
     /** @var GeneratorInterface Chart generation methods. */
     protected $generator;
 
     /**
      * ReportController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -75,6 +79,7 @@ class ReportController extends Controller
         if ($cache->has()) {
             return response()->json($cache->get()); // @codeCoverageIgnore
         }
+        $locale = app('steam')->getLocale();
         $current   = clone $start;
         $chartData = [];
         /** @var NetWorthInterface $helper */
@@ -84,8 +89,8 @@ class ReportController extends Controller
         // filter accounts on having the preference for being included.
         /** @var AccountRepositoryInterface $accountRepository */
         $accountRepository = app(AccountRepositoryInterface::class);
-        $filtered = $accounts->filter(
-            function (Account $account) use ($accountRepository) {
+        $filtered          = $accounts->filter(
+            static function (Account $account) use ($accountRepository) {
                 $includeNetWorth = $accountRepository->getMetaValue($account, 'include_net_worth');
                 $result          = null === $includeNetWorth ? true : '1' === $includeNetWorth;
                 if (false === $result) {
@@ -96,7 +101,7 @@ class ReportController extends Controller
             }
         );
 
-
+        // TODO get liabilities and include those as well?
 
         while ($current < $end) {
             // get balances by date, grouped by currency.
@@ -106,12 +111,13 @@ class ReportController extends Controller
             /** @var array $netWorthItem */
             foreach ($result as $netWorthItem) {
                 $currencyId = $netWorthItem['currency']->id;
-                $label      = $current->formatLocalized((string)trans('config.month_and_day'));
+                $label      = $current->formatLocalized((string) trans('config.month_and_day', [], $locale));
                 if (!isset($chartData[$currencyId])) {
                     $chartData[$currencyId] = [
                         'label'           => 'Net worth in ' . $netWorthItem['currency']->name,
                         'type'            => 'line',
                         'currency_symbol' => $netWorthItem['currency']->symbol,
+                        'currency_code' => $netWorthItem['currency']->code,
                         'entries'         => [],
                     ];
                 }
@@ -130,15 +136,11 @@ class ReportController extends Controller
     /**
      * Shows income and expense, debit/credit: operations.
      *
-     * TODO this chart is not multi-currency aware.
-     *
      * @param Collection $accounts
      * @param Carbon     $start
      * @param Carbon     $end
      *
-     * @return \Illuminate\Http\JsonResponse
-     *
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
+     * @return JsonResponse
      */
     public function operations(Collection $accounts, Carbon $start, Carbon $end): JsonResponse
     {
@@ -152,178 +154,100 @@ class ReportController extends Controller
             return response()->json($cache->get()); // @codeCoverageIgnore
         }
         Log::debug('Going to do operations for accounts ', $accounts->pluck('id')->toArray());
-        $format    = app('navigation')->preferredCarbonLocalizedFormat($start, $end);
-        $source    = $this->getChartData($accounts, $start, $end);
+        $format         = app('navigation')->preferredCarbonFormat($start, $end);
+        $titleFormat    = app('navigation')->preferredCarbonLocalizedFormat($start, $end);
+        $preferredRange = app('navigation')->preferredRangeFormat($start, $end);
+        $ids            = $accounts->pluck('id')->toArray();
+
+        // get journals for entire period:
+        $data      = [];
         $chartData = [
-            [
-                'label'           => (string)trans('firefly.income'),
+
+        ];
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector->setRange($start, $end)->withAccountInformation();
+        $collector->setXorAccounts($accounts);
+        $collector->setTypes([TransactionType::WITHDRAWAL, TransactionType::DEPOSIT, TransactionType::RECONCILIATION, TransactionType::TRANSFER]);
+        $journals = $collector->getExtractedJournals();
+
+        // loop. group by currency and by period.
+        /** @var array $journal */
+        foreach ($journals as $journal) {
+            $period                     = $journal['date']->format($format);
+            $currencyId                 = (int) $journal['currency_id'];
+            $data[$currencyId]          = $data[$currencyId] ?? [
+                    'currency_id'             => $currencyId,
+                    'currency_symbol'         => $journal['currency_symbol'],
+                    'currency_code'           => $journal['currency_code'],
+                    'currency_name'           => $journal['currency_name'],
+                    'currency_decimal_places' => (int) $journal['currency_decimal_places'],
+                ];
+            $data[$currencyId][$period] = $data[$currencyId][$period] ?? [
+                    'period' => $period,
+                    'spent'  => '0',
+                    'earned' => '0',
+                ];
+            // in our outgoing?
+            $key    = 'spent';
+            $amount = app('steam')->positive($journal['amount']);
+
+            if (
+                TransactionType::DEPOSIT === $journal['transaction_type_type']
+                || // deposit = incoming
+                // transfer or opening balance, and these accounts are the destination.
+                (
+                    (
+                        TransactionType::TRANSFER === $journal['transaction_type_type']
+                        || TransactionType::OPENING_BALANCE === $journal['transaction_type_type']
+                    )
+                    && in_array($journal['destination_account_id'], $ids, true)
+                )
+            ) {
+                $key = 'earned';
+            }
+            $data[$currencyId][$period][$key] = bcadd($data[$currencyId][$period][$key], $amount);
+        }
+
+        // loop this data, make chart bars for each currency:
+        /** @var array $currency */
+        foreach ($data as $currency) {
+            $income  = [
+                'label'           => (string) trans('firefly.box_earned_in_currency', ['currency' => $currency['currency_name']]),
                 'type'            => 'bar',
                 'backgroundColor' => 'rgba(0, 141, 76, 0.5)', // green
+                'currency_id'     => $currency['currency_id'],
+                'currency_symbol' => $currency['currency_symbol'],
+                'currency_code'   => $currency['currency_code'],
                 'entries'         => [],
-            ],
-            [
-                'label'           => (string)trans('firefly.expenses'),
+            ];
+            $expense = [
+                'label'           => (string) trans('firefly.box_spent_in_currency', ['currency' => $currency['currency_name']]),
                 'type'            => 'bar',
                 'backgroundColor' => 'rgba(219, 68, 55, 0.5)', // red
+                'currency_id'     => $currency['currency_id'],
+                'currency_symbol' => $currency['currency_symbol'],
+                'currency_code'   => $currency['currency_code'],
                 'entries'         => [],
-            ],
-        ];
-        foreach ($source['earned'] as $date => $amount) {
-            $carbon                          = new Carbon($date);
-            $label                           = $carbon->formatLocalized($format);
-            $earned                          = $chartData[0]['entries'][$label] ?? '0';
-            $chartData[0]['entries'][$label] = bcadd($earned, $amount);
-        }
-        foreach ($source['spent'] as $date => $amount) {
-            $carbon                          = new Carbon($date);
-            $label                           = $carbon->formatLocalized($format);
-            $spent                           = $chartData[1]['entries'][$label] ?? '0';
-            $chartData[1]['entries'][$label] = bcadd($spent, $amount);
+
+            ];
+            // loop all possible periods between $start and $end
+            $currentStart = clone $start;
+            while ($currentStart <= $end) {
+                $key                        = $currentStart->format($format);
+                $title                      = $currentStart->formatLocalized($titleFormat);
+                $income['entries'][$title]  = round((float) ($currency[$key]['earned'] ?? '0'), $currency['currency_decimal_places']);
+                $expense['entries'][$title] = round((float) ($currency[$key]['spent'] ?? '0'), $currency['currency_decimal_places']);
+                $currentStart               = app('navigation')->addPeriod($currentStart, $preferredRange, 0);
+            }
+
+            $chartData[] = $income;
+            $chartData[] = $expense;
         }
 
         $data = $this->generator->multiSet($chartData);
         $cache->store($data);
 
         return response()->json($data);
-    }
-
-    /**
-     * Shows sum income and expense, debit/credit: operations.
-     *
-     * TODO this chart is not multi-currency aware.
-     *
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return \Illuminate\Http\JsonResponse
-     *
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
-     */
-    public function sum(Collection $accounts, Carbon $start, Carbon $end): JsonResponse
-    {
-        // chart properties for cache:
-        $cache = new CacheProperties;
-        $cache->addProperty('chart.report.sum');
-        $cache->addProperty($start);
-        $cache->addProperty($end);
-        $cache->addProperty($accounts);
-        if ($cache->has()) {
-            return response()->json($cache->get()); // @codeCoverageIgnore
-        }
-
-        $source  = $this->getChartData($accounts, $start, $end);
-        $numbers = [
-            'sum_earned'   => '0',
-            'avg_earned'   => '0',
-            'count_earned' => 0,
-            'sum_spent'    => '0',
-            'avg_spent'    => '0',
-            'count_spent'  => 0,
-        ];
-        foreach ($source['earned'] as $amount) {
-            $numbers['sum_earned'] = bcadd($amount, $numbers['sum_earned']);
-            ++$numbers['count_earned'];
-        }
-        if ($numbers['count_earned'] > 0) {
-            $numbers['avg_earned'] = $numbers['sum_earned'] / $numbers['count_earned'];
-        }
-        foreach ($source['spent'] as $amount) {
-            $numbers['sum_spent'] = bcadd($amount, $numbers['sum_spent']);
-            ++$numbers['count_spent'];
-        }
-        if ($numbers['count_spent'] > 0) {
-            $numbers['avg_spent'] = $numbers['sum_spent'] / $numbers['count_spent'];
-        }
-
-        $chartData = [
-            [
-                'label'           => (string)trans('firefly.income'),
-                'type'            => 'bar',
-                'backgroundColor' => 'rgba(0, 141, 76, 0.5)', // green
-                'entries'         => [
-                    (string)trans('firefly.sum_of_period')     => $numbers['sum_earned'],
-                    (string)trans('firefly.average_in_period') => $numbers['avg_earned'],
-                ],
-            ],
-            [
-                'label'           => (string)trans('firefly.expenses'),
-                'type'            => 'bar',
-                'backgroundColor' => 'rgba(219, 68, 55, 0.5)', // red
-                'entries'         => [
-                    (string)trans('firefly.sum_of_period')     => $numbers['sum_spent'],
-                    (string)trans('firefly.average_in_period') => $numbers['avg_spent'],
-                ],
-            ],
-        ];
-
-        $data = $this->generator->multiSet($chartData);
-        $cache->store($data);
-
-        return response()->json($data);
-    }
-
-    /**
-     * Collects the incomes and expenses for the given periods, grouped per month. Will cache its results.
-     *
-     * @param Collection $accounts
-     * @param Carbon     $start
-     * @param Carbon     $end
-     *
-     * @return array
-     *
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
-     */
-    protected function getChartData(Collection $accounts, Carbon $start, Carbon $end): array // chart helper function
-    {
-        $cache = new CacheProperties;
-        $cache->addProperty('chart.report.get-chart-data');
-        $cache->addProperty($start);
-        $cache->addProperty($accounts);
-        $cache->addProperty($end);
-        if ($cache->has()) {
-            return $cache->get(); // @codeCoverageIgnore
-        }
-
-        $currentStart = clone $start;
-        $spentArray   = [];
-        $earnedArray  = [];
-
-        /** @var AccountTaskerInterface $tasker */
-        $tasker = app(AccountTaskerInterface::class);
-
-        while ($currentStart <= $end) {
-            $currentEnd = app('navigation')->endOfPeriod($currentStart, '1M');
-            $earned     = (string)array_sum(
-                array_map(
-                    function ($item) {
-                        return $item['sum'];
-                    },
-                    $tasker->getIncomeReport($currentStart, $currentEnd, $accounts)
-                )
-            );
-
-            $spent = (string)array_sum(
-                array_map(
-                    function ($item) {
-                        return $item['sum'];
-                    },
-                    $tasker->getExpenseReport($currentStart, $currentEnd, $accounts)
-                )
-            );
-
-            $label               = $currentStart->format('Y-m') . '-01';
-            $spentArray[$label]  = bcmul($spent, '-1');
-            $earnedArray[$label] = $earned;
-            $currentStart        = app('navigation')->addPeriod($currentStart, '1M', 0);
-        }
-        $result = [
-            'spent'  => $spentArray,
-            'earned' => $earnedArray,
-        ];
-        $cache->store($result);
-
-        return $result;
     }
 }

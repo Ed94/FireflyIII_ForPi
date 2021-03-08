@@ -1,52 +1,84 @@
 <?php
 /**
  * PiggyBank.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Models;
 
 use Carbon\Carbon;
-use Crypt;
+use Eloquent;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Builder;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
+
 /**
- * Class PiggyBank.
+ * FireflyIII\Models\PiggyBank
  *
- * @property Carbon  $targetdate
- * @property Carbon  $startdate
- * @property string  $targetamount
- * @property int     $id
- * @property string  $name
- * @property Account $account
- * @property Carbon  $updated_at
- * @property Carbon  $created_at
- * @property int     $order
- * @property bool    $active
- * @property int     $account_id
- * @property bool    encrypted
- *
+ * @property int $id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property int $account_id
+ * @property string $name
+ * @property string $targetamount
+ * @property \Illuminate\Support\Carbon|null $startdate
+ * @property \Illuminate\Support\Carbon|null $targetdate
+ * @property int $order
+ * @property bool $active
+ * @property bool $encrypted
+ * @property-read \FireflyIII\Models\Account $account
+ * @property-read Collection|\FireflyIII\Models\Attachment[] $attachments
+ * @property-read int|null $attachments_count
+ * @property-read Collection|\FireflyIII\Models\Note[] $notes
+ * @property-read int|null $notes_count
+ * @property-read Collection|\FireflyIII\Models\ObjectGroup[] $objectGroups
+ * @property-read int|null $object_groups_count
+ * @property-read Collection|\FireflyIII\Models\PiggyBankEvent[] $piggyBankEvents
+ * @property-read int|null $piggy_bank_events_count
+ * @property-read Collection|\FireflyIII\Models\PiggyBankRepetition[] $piggyBankRepetitions
+ * @property-read int|null $piggy_bank_repetitions_count
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank newQuery()
+ * @method static Builder|PiggyBank onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank query()
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereAccountId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereActive($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereEncrypted($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereOrder($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereStartdate($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereTargetamount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereTargetdate($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|PiggyBank whereUpdatedAt($value)
+ * @method static Builder|PiggyBank withTrashed()
+ * @method static Builder|PiggyBank withoutTrashed()
+ * @mixin Eloquent
  */
 class PiggyBank extends Model
 {
@@ -78,13 +110,13 @@ class PiggyBank extends Model
      *
      * @param string $value
      *
-     * @return PiggyBank
      * @throws NotFoundHttpException
+     * @return PiggyBank
      */
     public static function routeBinder(string $value): PiggyBank
     {
         if (auth()->check()) {
-            $piggyBankId = (int)$value;
+            $piggyBankId = (int) $value;
             $piggyBank   = self::where('piggy_banks.id', $piggyBankId)
                                ->leftJoin('accounts', 'accounts.id', '=', 'piggy_banks.account_id')
                                ->where('accounts.user_id', auth()->user()->id)->first(['piggy_banks.*']);
@@ -96,29 +128,29 @@ class PiggyBank extends Model
     }
 
     /**
+     * Get all of the tags for the post.
+     */
+    public function objectGroups()
+    {
+        return $this->morphToMany(ObjectGroup::class, 'object_groupable');
+    }
+
+    /**
+     * @codeCoverageIgnore
+     * @return MorphMany
+     */
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
+    }
+
+    /**
      * @codeCoverageIgnore
      * @return BelongsTo
      */
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param $value
-     *
-     * @return string|null
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
-     */
-    public function getNameAttribute($value): ?string
-    {
-        if ($this->encrypted) {
-            return Crypt::decrypt($value);
-        }
-
-        return $value;
     }
 
     /**
@@ -152,23 +184,9 @@ class PiggyBank extends Model
      * @codeCoverageIgnore
      *
      * @param $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setNameAttribute($value): void
-    {
-        $encrypt                       = config('firefly.encryption');
-        $this->attributes['name']      = $encrypt ? Crypt::encrypt($value) : $value;
-        $this->attributes['encrypted'] = $encrypt;
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param $value
      */
     public function setTargetamountAttribute($value): void
     {
-        $this->attributes['targetamount'] = (string)$value;
+        $this->attributes['targetamount'] = (string) $value;
     }
 }

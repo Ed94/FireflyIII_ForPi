@@ -1,65 +1,64 @@
 <?php
 /**
  * LinkTypeController.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 namespace FireflyIII\Api\V1\Controllers;
 
-use FireflyIII\Api\V1\Requests\LinkTypeRequest;
+use FireflyIII\Api\V1\Requests\LinkTypeStoreRequest;
+use FireflyIII\Api\V1\Requests\LinkTypeUpdateRequest;
 use FireflyIII\Exceptions\FireflyException;
-use FireflyIII\Helpers\Collector\TransactionCollectorInterface;
-use FireflyIII\Helpers\Filter\InternalTransferFilter;
+use FireflyIII\Helpers\Collector\GroupCollectorInterface;
 use FireflyIII\Models\LinkType;
-use FireflyIII\Models\TransactionType;
 use FireflyIII\Repositories\LinkType\LinkTypeRepositoryInterface;
 use FireflyIII\Repositories\User\UserRepositoryInterface;
 use FireflyIII\Support\Http\Api\TransactionFilter;
 use FireflyIII\Transformers\LinkTypeTransformer;
-use FireflyIII\Transformers\TransactionTransformer;
+use FireflyIII\Transformers\TransactionGroupTransformer;
 use FireflyIII\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use League\Fractal\Manager;
 use League\Fractal\Pagination\IlluminatePaginatorAdapter;
 use League\Fractal\Resource\Collection as FractalCollection;
 use League\Fractal\Resource\Item;
-use League\Fractal\Serializer\JsonApiSerializer;
 
 /**
  * Class LinkTypeController.
- *
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class LinkTypeController extends Controller
 {
     use TransactionFilter;
+
     /** @var LinkTypeRepositoryInterface The link type repository */
     private $repository;
 
     /** @var UserRepositoryInterface The user repository */
     private $userRepository;
 
+
     /**
      * LinkTypeController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -84,13 +83,14 @@ class LinkTypeController extends Controller
      *
      * @return JsonResponse
      * @throws FireflyException
+     * @codeCoverageIgnore
      */
     public function delete(LinkType $linkType): JsonResponse
     {
         if (false === $linkType->editable) {
-            throw new FireflyException(sprintf('You cannot delete this link type (#%d, "%s")', $linkType->id, $linkType->name));
+            throw new FireflyException('200020: Link type cannot be changed.');
         }
-        $this->repository->destroy($linkType, null);
+        $this->repository->destroy($linkType);
 
         return response()->json([], 204);
     }
@@ -98,16 +98,14 @@ class LinkTypeController extends Controller
     /**
      * List all of them.
      *
-     * @param Request $request
-     *
-     * @return JsonResponse]
+     * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
         // create some objects:
-        $manager  = new Manager;
-        $baseUrl  = $request->getSchemeAndHttpHost() . '/api/v1';
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $manager  = $this->getManager();
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
 
         // get list of accounts. Count it and split it.
         $collection = $this->repository->get();
@@ -118,9 +116,6 @@ class LinkTypeController extends Controller
         $paginator = new LengthAwarePaginator($linkTypes, $count, $pageSize, $this->parameters->get('page'));
         $paginator->setPath(route('api.v1.link_types.index') . $this->buildParams());
 
-        // present to user.
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
         /** @var LinkTypeTransformer $transformer */
         $transformer = app(LinkTypeTransformer::class);
         $transformer->setParameters($this->parameters);
@@ -128,154 +123,152 @@ class LinkTypeController extends Controller
         $resource = new FractalCollection($linkTypes, $transformer, 'link_types');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
      * List single resource.
      *
-     * @param Request  $request
      * @param LinkType $linkType
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function show(Request $request, LinkType $linkType): JsonResponse
+    public function show(LinkType $linkType): JsonResponse
     {
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager = $this->getManager();
         /** @var LinkTypeTransformer $transformer */
         $transformer = app(LinkTypeTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new Item($linkType, $transformer, 'link_types');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
      * Store new object.
      *
-     * @param LinkTypeRequest $request
+     * @param LinkTypeStoreRequest $request
      *
      * @return JsonResponse
      * @throws FireflyException
      */
-    public function store(LinkTypeRequest $request): JsonResponse
+    public function store(LinkTypeStoreRequest $request): JsonResponse
     {
         /** @var User $admin */
         $admin = auth()->user();
 
         if (!$this->userRepository->hasRole($admin, 'owner')) {
-            throw new FireflyException('You need the "owner"-role to do this.');
+            throw new FireflyException('200005: You need the "owner" role to do this.'); // @codeCoverageIgnore
         }
         $data = $request->getAll();
         // if currency ID is 0, find the currency by the code:
         $linkType = $this->repository->store($data);
-        $manager  = new Manager;
-        $baseUrl  = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager  = $this->getManager();
 
         /** @var LinkTypeTransformer $transformer */
         $transformer = app(LinkTypeTransformer::class);
         $transformer->setParameters($this->parameters);
         $resource = new Item($linkType, $transformer, 'link_types');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
      * Delete the resource.
      *
+     * @param Request  $request
      * @param LinkType $linkType
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
     public function transactions(Request $request, LinkType $linkType): JsonResponse
     {
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
         $type     = $request->get('type') ?? 'default';
         $this->parameters->set('type', $type);
 
         $types   = $this->mapTransactionTypes($this->parameters->get('type'));
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager = $this->getManager();
 
         // whatever is returned by the query, it must be part of these journals:
         $journalIds = $this->repository->getJournalIds($linkType);
 
         /** @var User $admin */
         $admin = auth()->user();
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($admin);
-        $collector->withOpposingAccount()->withCategoryInformation()->withBudgetInformation();
-        $collector->setAllAssetAccounts();
-        $collector->setJournalIds($journalIds);
 
-        if (\in_array(TransactionType::TRANSFER, $types, true)) {
-            $collector->removeFilter(InternalTransferFilter::class);
-        }
+        // use new group collector:
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector
+            ->setUser($admin)
+            // filter on journal IDs.
+            ->setJournalIds($journalIds)
+            // all info needed for the API:
+            ->withAPIInformation()
+            // set page size:
+            ->setLimit($pageSize)
+            // set page to retrieve
+            ->setPage($this->parameters->get('page'))
+            // set types of transactions to return.
+            ->setTypes($types);
+
 
         if (null !== $this->parameters->get('start') && null !== $this->parameters->get('end')) {
             $collector->setRange($this->parameters->get('start'), $this->parameters->get('end'));
         }
-        $collector->setLimit($pageSize)->setPage($this->parameters->get('page'));
-        $collector->setTypes($types);
-        $paginator = $collector->getPaginatedTransactions();
+        $paginator = $collector->getPaginatedGroups();
         $paginator->setPath(route('api.v1.transactions.index') . $this->buildParams());
         $transactions = $paginator->getCollection();
 
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new FractalCollection($transactions, $transformer, 'transactions');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
 
     /**
      * Update object.
      *
-     * @param LinkTypeRequest $request
+     * @param LinkTypeUpdateRequest $request
      * @param LinkType        $linkType
      *
      * @return JsonResponse
      * @throws FireflyException
      */
-    public function update(LinkTypeRequest $request, LinkType $linkType): JsonResponse
+    public function update(LinkTypeUpdateRequest $request, LinkType $linkType): JsonResponse
     {
         if (false === $linkType->editable) {
-            throw new FireflyException(sprintf('You cannot edit this link type (#%d, "%s")', $linkType->id, $linkType->name));
+            throw new FireflyException('200020: Link type cannot be changed.');
         }
 
         /** @var User $admin */
         $admin = auth()->user();
 
         if (!$this->userRepository->hasRole($admin, 'owner')) {
-            throw new FireflyException('You need the "owner"-role to do this.');
+            throw new FireflyException('200005: You need the "owner" role to do this.'); // @codeCoverageIgnore
         }
 
         $data = $request->getAll();
         $this->repository->update($linkType, $data);
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
+        $manager = $this->getManager();
         /** @var LinkTypeTransformer $transformer */
         $transformer = app(LinkTypeTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new Item($linkType, $transformer, 'link_types');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 }

@@ -2,22 +2,22 @@
 
 /**
  * Handler.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 /** @noinspection MultipleReturnStatementsInspection */
@@ -31,11 +31,11 @@ use Exception;
 use FireflyIII\Jobs\MailError;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException as LaravelValidationException;
 use League\OAuth2\Server\Exception\OAuthServerException;
-use Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
-
+use Throwable;
 /**
  * Class Handler
  *
@@ -48,13 +48,10 @@ class Handler extends ExceptionHandler
      *
      * @param Request   $request
      * @param Exception $exception
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
-     * @SuppressWarnings(PHPMD.NPathComplexity)
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
      *
      * @return mixed
      */
-    public function render($request, Exception $exception)
+    public function render($request, Throwable $exception)
     {
         if ($exception instanceof LaravelValidationException && $request->expectsJson()) {
             // ignore it: controller will handle it.
@@ -81,16 +78,24 @@ class Handler extends ExceptionHandler
                 return response()->json(
                     [
                         'message'   => $exception->getMessage(),
-                        'exception' => \get_class($exception),
+                        'exception' => get_class($exception),
                         'line'      => $exception->getLine(),
                         'file'      => $exception->getFile(),
                         'trace'     => $exception->getTrace(),
-                    ], 500
+                    ],
+                    500
                 );
             }
 
-            return response()->json(['message' => 'Internal Firefly III Exception. See log files.', 'exception' => \get_class($exception)], 500);
+            return response()->json(['message' => sprintf('Internal Firefly III Exception: %s', $exception->getMessage()), 'exception' => get_class($exception)], 500);
         }
+
+        if ($exception instanceof NotFoundHttpException) {
+            $handler = app(GracefulNotFoundHandler::class);
+
+            return $handler->render($request, $exception);
+        }
+
 
         if ($exception instanceof FireflyException || $exception instanceof ErrorException || $exception instanceof OAuthServerException) {
             $isDebug = config('app.debug');
@@ -104,19 +109,18 @@ class Handler extends ExceptionHandler
     /**
      * Report or log an exception.
      *
-     * This is a great spot to send exceptions to Sentry, Bugsnag, etc.
+     * This is a great spot to send exceptions to Sentry etc.
      *
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity) // it's five its fine.
+     *  // it's five its fine.
      *
-     * @param \Exception $exception
-     *
-     * @return mixed|void
+     * @param Exception $exception
      *
      * @throws Exception
+     *
+     * @return void
      */
-    public function report(Exception $exception)
+    public function report(Throwable $exception)
     {
-
         $doMailError = config('firefly.send_error_message');
         // if the user wants us to mail:
         if (true === $doMailError
@@ -131,7 +135,7 @@ class Handler extends ExceptionHandler
                 $userData['email'] = auth()->user()->email;
             }
             $data = [
-                'class'        => \get_class($exception),
+                'class'        => get_class($exception),
                 'errorMessage' => $exception->getMessage(),
                 'time'         => date('r'),
                 'stackTrace'   => $exception->getTraceAsString(),
@@ -139,14 +143,14 @@ class Handler extends ExceptionHandler
                 'line'         => $exception->getLine(),
                 'code'         => $exception->getCode(),
                 'version'      => config('firefly.version'),
-                'url'          => Request::fullUrl(),
-                'userAgent'    => Request::userAgent(),
-                'json'         => Request::acceptsJson(),
+                'url'          => request()->fullUrl(),
+                'userAgent'    => request()->userAgent(),
+                'json'         => request()->acceptsJson(),
             ];
 
             // create job that will mail.
-            $ipAddress = Request::ip() ?? '0.0.0.0';
-            $job       = new MailError($userData, (string)config('firefly.site_owner'), $ipAddress, $data);
+            $ipAddress = request()->ip() ?? '0.0.0.0';
+            $job       = new MailError($userData, (string) config('firefly.site_owner'), $ipAddress, $data);
             dispatch($job);
         }
 

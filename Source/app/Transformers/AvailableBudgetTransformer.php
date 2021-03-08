@@ -1,22 +1,22 @@
 <?php
 /**
  * AvailableBudgetTransformer.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -26,6 +26,8 @@ namespace FireflyIII\Transformers;
 
 use FireflyIII\Models\AvailableBudget;
 use FireflyIII\Repositories\Budget\BudgetRepositoryInterface;
+use FireflyIII\Repositories\Budget\NoBudgetRepositoryInterface;
+use FireflyIII\Repositories\Budget\OperationsRepositoryInterface;
 use Illuminate\Support\Collection;
 use Log;
 
@@ -34,6 +36,10 @@ use Log;
  */
 class AvailableBudgetTransformer extends AbstractTransformer
 {
+    /** @var NoBudgetRepositoryInterface */
+    private $noBudgetRepository;
+    /** @var OperationsRepositoryInterface */
+    private $opsRepository;
     /** @var BudgetRepositoryInterface */
     private $repository;
 
@@ -44,9 +50,11 @@ class AvailableBudgetTransformer extends AbstractTransformer
      */
     public function __construct()
     {
-        $this->repository = app(BudgetRepositoryInterface::class);
+        $this->repository         = app(BudgetRepositoryInterface::class);
+        $this->opsRepository      = app(OperationsRepositoryInterface::class);
+        $this->noBudgetRepository = app(NoBudgetRepositoryInterface::class);
         if ('testing' === config('app.env')) {
-            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', \get_class($this)));
+            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', get_class($this)));
         }
     }
 
@@ -66,11 +74,11 @@ class AvailableBudgetTransformer extends AbstractTransformer
             'id'                      => (int)$availableBudget->id,
             'created_at'              => $availableBudget->created_at->toAtomString(),
             'updated_at'              => $availableBudget->updated_at->toAtomString(),
-            'currency_id'             => $currency->id,
+            'currency_id'             => (int) $currency->id,
             'currency_code'           => $currency->code,
             'currency_symbol'         => $currency->symbol,
-            'currency_decimal_places' => $currency->decimal_places,
-            'amount'                  => round($availableBudget->amount, $currency->decimal_places),
+            'currency_decimal_places' => (int) $currency->decimal_places,
+            'amount'                  => number_format((float) $availableBudget->amount, $currency->decimal_places, '.', ''),
             'start'                   => $availableBudget->start_date->format('Y-m-d'),
             'end'                     => $availableBudget->end_date->format('Y-m-d'),
             'spent_in_budgets'        => [],
@@ -86,7 +94,7 @@ class AvailableBudgetTransformer extends AbstractTransformer
         $end      = $this->parameters->get('end');
         if (null !== $start && null !== $end) {
             $data['spent_in_budgets'] = $this->getSpentInBudgets();
-            $data['spent_no_budget'] = $this->spentOutsideBudgets();
+            $data['spent_no_budget']  = $this->spentOutsideBudgets();
         }
 
         return $data;
@@ -98,7 +106,8 @@ class AvailableBudgetTransformer extends AbstractTransformer
     private function getSpentInBudgets(): array
     {
         $allActive = $this->repository->getActiveBudgets();
-        return $this->repository->spentInPeriodMc(
+
+        return $this->opsRepository->spentInPeriodMc(
             $allActive, new Collection, $this->parameters->get('start'), $this->parameters->get('end')
         );
 
@@ -109,7 +118,7 @@ class AvailableBudgetTransformer extends AbstractTransformer
      */
     private function spentOutsideBudgets(): array
     {
-        return $this->repository->spentInPeriodWoBudgetMc(new Collection,$this->parameters->get('start'), $this->parameters->get('end'));
+        return $this->noBudgetRepository->spentInPeriodWoBudgetMc(new Collection, $this->parameters->get('start'), $this->parameters->get('end'));
     }
 
 }

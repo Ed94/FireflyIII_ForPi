@@ -1,22 +1,22 @@
 <?php
 /**
  * AugumentData.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -24,15 +24,18 @@ declare(strict_types=1);
 namespace FireflyIII\Support\Http\Controllers;
 
 use Carbon\Carbon;
+use FireflyIII\Helpers\Collector\GroupCollectorInterface;
 use FireflyIII\Models\Account;
 use FireflyIII\Models\AccountType;
 use FireflyIII\Models\Budget;
 use FireflyIII\Models\BudgetLimit;
-use FireflyIII\Models\Tag;
-use FireflyIII\Models\Transaction;
+use FireflyIII\Models\TransactionType;
 use FireflyIII\Repositories\Account\AccountRepositoryInterface;
+use FireflyIII\Repositories\Budget\BudgetLimitRepositoryInterface;
 use FireflyIII\Repositories\Budget\BudgetRepositoryInterface;
+use FireflyIII\Repositories\Budget\OperationsRepositoryInterface;
 use FireflyIII\Repositories\Category\CategoryRepositoryInterface;
+use FireflyIII\Support\CacheProperties;
 use Illuminate\Support\Collection;
 
 /**
@@ -69,31 +72,38 @@ trait AugumentData
     }
 
     /**
-     * Returns the budget limits belonging to the given budget and valid on the given day.
+     * Small helper function for the revenue and expense account charts.
      *
-     * @param Collection $budgetLimits
-     * @param Budget     $budget
-     * @param Carbon     $start
-     * @param Carbon     $end
+     * @param array $names
      *
-     * @return Collection
+     * @return array
      */
-    protected function filterBudgetLimits(Collection $budgetLimits, Budget $budget, Carbon $start, Carbon $end): Collection // filter data
+    protected function expandNames(array $names): array
     {
-        $set = $budgetLimits->filter(
-            function (BudgetLimit $budgetLimit) use ($budget, $start, $end) {
-                if ($budgetLimit->budget_id === $budget->id
-                    && $budgetLimit->start_date->lte($start) // start of budget limit is on or before start
-                    && $budgetLimit->end_date->gte($end) // end of budget limit is on or after end
-                ) {
-                    return $budgetLimit;
-                }
+        $result = [];
+        foreach ($names as $entry) {
+            $result[$entry['name']] = 0;
+        }
 
-                return false;
-            }
-        );
+        return $result;
+    }
 
-        return $set;
+    /**
+     * Small helper function for the revenue and expense account charts.
+     *
+     * @param Collection $accounts
+     *
+     * @return array
+     */
+    protected function extractNames(Collection $accounts): array
+    {
+        $return = [];
+        /** @var Account $account */
+        foreach ($accounts as $account) {
+            $return[$account->id] = $account->name;
+        }
+
+        return $return;
     }
 
     /**
@@ -110,7 +120,9 @@ trait AugumentData
         $accounts   = $repository->getAccountsByType([AccountType::ASSET, AccountType::DEFAULT, AccountType::EXPENSE, AccountType::CASH]);
         $grouped    = $accounts->groupBy('id')->toArray();
         $return     = [];
-        foreach ($accountIds as $accountId) {
+        foreach ($accountIds as $combinedId) {
+            $parts     = explode('-', $combinedId);
+            $accountId = (int)$parts[0];
             if (isset($grouped[$accountId])) {
                 $return[$accountId] = $grouped[$accountId][0]['name'];
             }
@@ -158,7 +170,9 @@ trait AugumentData
         $categories = $repository->getCategories();
         $grouped    = $categories->groupBy('id')->toArray();
         $return     = [];
-        foreach ($categoryIds as $categoryId) {
+        foreach ($categoryIds as $combinedId) {
+            $parts      = explode('-', $combinedId);
+            $categoryId = (int)$parts[0];
             if (isset($grouped[$categoryId])) {
                 $return[$categoryId] = $grouped[$categoryId][0]['name'];
             }
@@ -169,95 +183,125 @@ trait AugumentData
     }
 
     /**
-     * Helper function that groups expenses.
+     * Gets all budget limits for a budget.
      *
-     * @param Collection $set
+     * @param Budget $budget
+     * @param Carbon $start
+     * @param Carbon $end
      *
-     * @return array
+     * @return Collection
      */
-    protected function groupByBudget(Collection $set): array // filter + group data
+    protected function getLimits(Budget $budget, Carbon $start, Carbon $end): Collection // get data + augment with info
     {
-        // group by category ID:
-        $grouped = [];
-        /** @var Transaction $transaction */
-        foreach ($set as $transaction) {
-            $jrnlBudId          = (int)$transaction->transaction_journal_budget_id;
-            $transBudId         = (int)$transaction->transaction_budget_id;
-            $budgetId           = max($jrnlBudId, $transBudId);
-            $grouped[$budgetId] = $grouped[$budgetId] ?? '0';
-            $grouped[$budgetId] = bcadd($transaction->transaction_amount, $grouped[$budgetId]);
+        /** @var OperationsRepositoryInterface $opsRepository */
+        $opsRepository = app(OperationsRepositoryInterface::class);
+
+        /** @var BudgetLimitRepositoryInterface $blRepository */
+        $blRepository = app(BudgetLimitRepositoryInterface::class);
+
+        // properties for cache
+        $cache = new CacheProperties;
+        $cache->addProperty($start);
+        $cache->addProperty($end);
+        $cache->addProperty($budget->id);
+        $cache->addProperty('get-limits');
+
+        if ($cache->has()) {
+            return $cache->get(); // @codeCoverageIgnore
         }
 
-        return $grouped;
-    }
+        $set              = $blRepository->getBudgetLimits($budget, $start, $end);
+        $limits           = new Collection();
+        $budgetCollection = new Collection([$budget]);
+        /** @var BudgetLimit $entry */
+        foreach ($set as $entry) {
+            $currency = $entry->transactionCurrency;
+            // clone because these objects change each other.
+            $currentStart = clone $start;
+            $currentEnd   = clone $end;
+            $expenses     = $opsRepository->sumExpenses($currentStart, $currentEnd, null, $budgetCollection, $currency);
+            $spent        = $expenses[(int)$currency->id]['sum'] ?? '0';
+            $entry->spent = $spent;
 
-    /**
-     * Group transactions by category.
-     *
-     * @param Collection $set
-     *
-     * @return array
-     */
-    protected function groupByCategory(Collection $set): array // filter + group data
-    {
-        // group by category ID:
-        $grouped = [];
-        /** @var Transaction $transaction */
-        foreach ($set as $transaction) {
-            $jrnlCatId            = (int)$transaction->transaction_journal_category_id;
-            $transCatId           = (int)$transaction->transaction_category_id;
-            $categoryId           = max($jrnlCatId, $transCatId);
-            $grouped[$categoryId] = $grouped[$categoryId] ?? '0';
-            $grouped[$categoryId] = bcadd($transaction->transaction_amount, $grouped[$categoryId]);
+            $limits->push($entry);
         }
+        $cache->store($limits);
 
-        return $grouped;
+        return $set;
     }
 
     /**
      * Group set of transactions by name of opposing account.
      *
-     * @param Collection $set
+     * @param array $array
      *
      * @return array
      */
-    protected function groupByName(Collection $set): array // filter + group data
+    protected function groupByName(array $array): array // filter + group data
     {
+
         // group by opposing account name.
         $grouped = [];
-        /** @var Transaction $transaction */
-        foreach ($set as $transaction) {
-            $name           = $transaction->opposing_account_name;
+        /** @var array $journal */
+        foreach ($array as $journal) {
+            $name = '(no name)';
+            if (TransactionType::WITHDRAWAL === $journal['transaction_type_type']) {
+                $name = $journal['destination_account_name'];
+            }
+            if (TransactionType::WITHDRAWAL !== $journal['transaction_type_type']) {
+                $name = $journal['source_account_name'];
+            }
+
             $grouped[$name] = $grouped[$name] ?? '0';
-            $grouped[$name] = bcadd($transaction->transaction_amount, $grouped[$name]);
+            $grouped[$name] = bcadd($journal['amount'], $grouped[$name]);
         }
 
         return $grouped;
     }
 
     /**
-     * Group transactions by tag.
+     * Spent in a period.
      *
-     * @param Collection $set
+     * @param Collection $assets
+     * @param Collection $opposing
+     * @param Carbon     $start
+     * @param Carbon     $end
      *
      * @return array
      */
-    protected function groupByTag(Collection $set): array // filter + group data
+    protected function spentInPeriod(Collection $assets, Collection $opposing, Carbon $start, Carbon $end): array // get data + augment with info
     {
-        // group by category ID:
-        $grouped = [];
-        /** @var Transaction $transaction */
-        foreach ($set as $transaction) {
-            $journal     = $transaction->transactionJournal;
-            $journalTags = $journal->tags;
-            /** @var Tag $journalTag */
-            foreach ($journalTags as $journalTag) {
-                $journalTagId           = $journalTag->id;
-                $grouped[$journalTagId] = $grouped[$journalTagId] ?? '0';
-                $grouped[$journalTagId] = bcadd($transaction->transaction_amount, $grouped[$journalTagId]);
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+
+        $total = $assets->merge($opposing);
+        $collector->setRange($start, $end)->setTypes([TransactionType::WITHDRAWAL])->setAccounts($total);
+        $journals = $collector->getExtractedJournals();
+        $sum      = [
+            'grand_sum'    => '0',
+            'per_currency' => [],
+        ];
+        // loop to support multi currency
+        foreach ($journals as $journal) {
+            $currencyId = (int)$journal['currency_id'];
+
+            // if not set, set to zero:
+            if (!isset($sum['per_currency'][$currencyId])) {
+                $sum['per_currency'][$currencyId] = [
+                    'sum'      => '0',
+                    'currency' => [
+                        'name'           => $journal['currency_name'],
+                        'symbol'         => $journal['currency_symbol'],
+                        'decimal_places' => $journal['currency_decimal_places'],
+                    ],
+                ];
             }
+
+            // add amount
+            $sum['per_currency'][$currencyId]['sum'] = bcadd($sum['per_currency'][$currencyId]['sum'], $journal['amount']);
+            $sum['grand_sum']                        = bcadd($sum['grand_sum'], $journal['amount']);
         }
 
-        return $grouped;
+        return $sum;
     }
 }

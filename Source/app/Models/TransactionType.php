@@ -1,37 +1,58 @@
 <?php
 /**
  * TransactionType.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Models;
 
+use Eloquent;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Carbon;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Class TransactionType.
+ * FireflyIII\Models\TransactionType
  *
+ * @property int $id
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property string $type
- * @property int    $id
+ * @property-read Collection|\FireflyIII\Models\TransactionJournal[] $transactionJournals
+ * @property-read int|null $transaction_journals_count
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType newQuery()
+ * @method static Builder|TransactionType onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType query()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereType($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereUpdatedAt($value)
+ * @method static Builder|TransactionType withTrashed()
+ * @method static Builder|TransactionType withoutTrashed()
+ * @mixin Eloquent
  */
 class TransactionType extends Model
 {
@@ -76,8 +97,8 @@ class TransactionType extends Model
      *
      * @param string $type
      *
-     * @return Model|null|static
      * @throws NotFoundHttpException
+     * @return Model|null|static
      */
     public static function routeBinder(string $type): TransactionType
     {

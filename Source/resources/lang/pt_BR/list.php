@@ -2,22 +2,22 @@
 
 /**
  * list.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -36,14 +36,18 @@ return [
     'currentBalance'          => 'Saldo atual',
     'linked_to_rules'         => 'Regras relevantes',
     'active'                  => 'Está ativo?',
+    'percentage'              => 'pct.',
+    'recurring_transaction'   => 'Transação recorrente',
+    'next_due'                => 'Next due',
+    'transaction_type'        => 'Tipo',
     'lastActivity'            => 'Última atividade',
     'balanceDiff'             => 'Diferença de saldo',
-    'matchesOn'               => 'Correspondido em',
+    'other_meta_data'         => 'Outros meta dados',
     'account_type'            => 'Tipo de conta',
     'created_at'              => 'Criado em',
     'account'                 => 'Conta',
+    'external_uri'            => 'URI externo',
     'matchingAmount'          => 'Total',
-    'split_number'            => 'Dividir #',
     'destination'             => 'Destino',
     'source'                  => 'Fonte',
     'next_expected_match'     => 'Próximo correspondente esperado',
@@ -51,7 +55,6 @@ return [
     'repeat_freq'             => 'Repetições',
     'description'             => 'Descrição',
     'amount'                  => 'Total',
-    'internal_reference'      => 'Referência interna',
     'date'                    => 'Data',
     'interest_date'           => 'Data de interesse',
     'book_date'               => 'Data reserva',
@@ -59,11 +62,11 @@ return [
     'due_date'                => 'Prazo',
     'payment_date'            => 'Data de pagamento',
     'invoice_date'            => 'Data da Fatura',
-    'interal_reference'       => 'Referência interna',
+    'internal_reference'      => 'Referência interna',
     'notes'                   => 'Notas',
     'from'                    => 'De',
     'piggy_bank'              => 'Cofrinho',
-    'to'                      => 'Até',
+    'to'                      => 'Para',
     'budget'                  => 'Orçamento',
     'category'                => 'Categoria',
     'bill'                    => 'Fatura',
@@ -87,8 +90,6 @@ return [
     'attachments_count'       => 'Número de anexos',
     'bills_count'             => 'Número de contas',
     'categories_count'        => 'Número de categorias',
-    'export_jobs_count'       => 'Número de jobs de exportação',
-    'import_jobs_count'       => 'Número de jobs de importação',
     'budget_count'            => 'Número de orçamentos',
     'rule_and_groups_count'   => 'Número de regras e grupos de regras',
     'tags_count'              => 'Número de tags',
@@ -102,18 +103,16 @@ return [
     'sum_withdrawals'         => 'Soma de retiradas',
     'sum_deposits'            => 'Soma dos depósitos',
     'sum_transfers'           => 'Soma das transferências',
+    'sum_reconciliations'     => 'Soma das reconciliações',
     'reconcile'               => 'Pago',
-    'account_on_spectre'      => 'Conta (Spectre)',
-    'account_on_ynab'         => 'Conta (YNAB)',
-    'do_import'               => 'Importar desta conta',
-    'sepa-ct-id'              => 'SEPA Identificador end-to-end',
-    'sepa-ct-op'              => 'SEPA Identificador de conta de contrária',
-    'sepa-db'                 => 'SEPA Identificador de Mandato',
-    'sepa-country'            => 'SEPA País',
-    'sepa-cc'                 => 'SEPA Código de Compensação',
-    'sepa-ep'                 => 'SEPA Finalidade Externa',
-    'sepa-ci'                 => 'SEPA Identificador do Credor',
-    'sepa-batch-id'           => 'ID de lote SEPA',
+    'sepa_ct_id'              => 'SEPA Identificador end-to-end',
+    'sepa_ct_op'              => 'SEPA Identificador de Conta Destino',
+    'sepa_db'                 => 'SEPA Identificador Mandatário',
+    'sepa_country'            => 'SEPA País',
+    'sepa_cc'                 => 'SEPA Código de Compensação',
+    'sepa_ep'                 => 'SEPA Finalidade Externa',
+    'sepa_ci'                 => 'SEPA Identificador do Credor',
+    'sepa_batch_id'           => 'ID de lote SEPA',
     'external_id'             => 'ID externo',
     'account_at_bunq'         => 'Loja com bunq',
     'file_name'               => 'Nome do arquivo',

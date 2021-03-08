@@ -1,29 +1,60 @@
 <?php
 
-
 /**
  * firefly.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org.
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
-use FireflyIII\Export\Exporter\CsvExporter;
+use FireflyIII\Models\Account;
+use FireflyIII\Models\AccountType;
+use FireflyIII\Models\Attachment;
+use FireflyIII\Models\AvailableBudget;
+use FireflyIII\Models\Bill;
+use FireflyIII\Models\Budget;
+use FireflyIII\Models\BudgetLimit;
+use FireflyIII\Models\Category;
+use FireflyIII\Models\LinkType;
+use FireflyIII\Models\ObjectGroup;
+use FireflyIII\Models\PiggyBank;
+use FireflyIII\Models\Preference;
+use FireflyIII\Models\Recurrence;
+use FireflyIII\Models\Rule;
+use FireflyIII\Models\RuleGroup;
+use FireflyIII\Models\Tag;
+use FireflyIII\Models\Transaction;
+use FireflyIII\Models\TransactionCurrency;
+use FireflyIII\Models\TransactionGroup;
+use FireflyIII\Models\TransactionJournal;
+use FireflyIII\Models\TransactionJournalLink;
+use FireflyIII\Models\TransactionType as TransactionTypeModel;
+use FireflyIII\Models\Webhook;
+use FireflyIII\Support\Binder\AccountList;
+use FireflyIII\Support\Binder\BudgetList;
+use FireflyIII\Support\Binder\CategoryList;
+use FireflyIII\Support\Binder\CLIToken;
+use FireflyIII\Support\Binder\ConfigurationName;
+use FireflyIII\Support\Binder\CurrencyCode;
+use FireflyIII\Support\Binder\Date;
+use FireflyIII\Support\Binder\JournalList;
+use FireflyIII\Support\Binder\TagList;
+use FireflyIII\Support\Binder\TagOrId;
 use FireflyIII\TransactionRules\Actions\AddTag;
 use FireflyIII\TransactionRules\Actions\AppendDescription;
 use FireflyIII\TransactionRules\Actions\AppendNotes;
@@ -33,6 +64,7 @@ use FireflyIII\TransactionRules\Actions\ClearNotes;
 use FireflyIII\TransactionRules\Actions\ConvertToDeposit;
 use FireflyIII\TransactionRules\Actions\ConvertToTransfer;
 use FireflyIII\TransactionRules\Actions\ConvertToWithdrawal;
+use FireflyIII\TransactionRules\Actions\DeleteTransaction;
 use FireflyIII\TransactionRules\Actions\LinkToBill;
 use FireflyIII\TransactionRules\Actions\PrependDescription;
 use FireflyIII\TransactionRules\Actions\PrependNotes;
@@ -44,40 +76,8 @@ use FireflyIII\TransactionRules\Actions\SetDescription;
 use FireflyIII\TransactionRules\Actions\SetDestinationAccount;
 use FireflyIII\TransactionRules\Actions\SetNotes;
 use FireflyIII\TransactionRules\Actions\SetSourceAccount;
-use FireflyIII\TransactionRules\Triggers\AmountExactly;
-use FireflyIII\TransactionRules\Triggers\AmountLess;
-use FireflyIII\TransactionRules\Triggers\AmountMore;
-use FireflyIII\TransactionRules\Triggers\BudgetIs;
-use FireflyIII\TransactionRules\Triggers\CategoryIs;
-use FireflyIII\TransactionRules\Triggers\CurrencyIs;
-use FireflyIII\TransactionRules\Triggers\DescriptionContains;
-use FireflyIII\TransactionRules\Triggers\DescriptionEnds;
-use FireflyIII\TransactionRules\Triggers\DescriptionIs;
-use FireflyIII\TransactionRules\Triggers\DescriptionStarts;
-use FireflyIII\TransactionRules\Triggers\FromAccountContains;
-use FireflyIII\TransactionRules\Triggers\FromAccountEnds;
-use FireflyIII\TransactionRules\Triggers\FromAccountIs;
-use FireflyIII\TransactionRules\Triggers\FromAccountStarts;
-use FireflyIII\TransactionRules\Triggers\HasAnyBudget;
-use FireflyIII\TransactionRules\Triggers\HasAnyCategory;
-use FireflyIII\TransactionRules\Triggers\HasAnyTag;
-use FireflyIII\TransactionRules\Triggers\HasAttachment;
-use FireflyIII\TransactionRules\Triggers\HasNoBudget;
-use FireflyIII\TransactionRules\Triggers\HasNoCategory;
-use FireflyIII\TransactionRules\Triggers\HasNoTag;
-use FireflyIII\TransactionRules\Triggers\NotesAny;
-use FireflyIII\TransactionRules\Triggers\NotesAre;
-use FireflyIII\TransactionRules\Triggers\NotesContain;
-use FireflyIII\TransactionRules\Triggers\NotesEmpty;
-use FireflyIII\TransactionRules\Triggers\NotesEnd;
-use FireflyIII\TransactionRules\Triggers\NotesStart;
-use FireflyIII\TransactionRules\Triggers\TagIs;
-use FireflyIII\TransactionRules\Triggers\ToAccountContains;
-use FireflyIII\TransactionRules\Triggers\ToAccountEnds;
-use FireflyIII\TransactionRules\Triggers\ToAccountIs;
-use FireflyIII\TransactionRules\Triggers\ToAccountStarts;
-use FireflyIII\TransactionRules\Triggers\TransactionType;
-use FireflyIII\TransactionRules\Triggers\UserAction;
+use FireflyIII\TransactionRules\Actions\UpdatePiggybank;
+use FireflyIII\User;
 
 /*
  * DO NOT EDIT THIS FILE. IT IS AUTO GENERATED.
@@ -86,31 +86,62 @@ use FireflyIII\TransactionRules\Triggers\UserAction;
  */
 
 return [
-    'configuration'                => [
+    'configuration' => [
         'single_user_mode' => true,
         'is_demo_site'     => false,
     ],
-    'encryption'                   => null === env('USE_ENCRYPTION') || env('USE_ENCRYPTION') === true,
-    'version'                      => '4.7.9',
-    'api_version'                  => '0.9.0',
-    'db_version'                   => 6,
-    'maxUploadSize'                => 15242880,
+    'feature_flags' => [
+        'export'    => true,
+        'telemetry' => true,
+        'webhooks'  => false,
+    ],
+
+    'version'                      => '5.5.0-beta.1',
+    'api_version'                  => '1.5.0',
+    'db_version'                   => 15,
+    'maxUploadSize'                => 1073741824, // 1 GB
     'send_error_message'           => env('SEND_ERROR_MESSAGE', true),
     'site_owner'                   => env('SITE_OWNER', ''),
+
+    // send emails?
     'send_registration_mail'       => env('SEND_REGISTRATION_MAIL', true),
+    'warn_new_ip'                  => env('SEND_LOGIN_NEW_IP_WARNING', true),
     'demo_username'                => env('DEMO_USERNAME', ''),
     'demo_password'                => env('DEMO_PASSWORD', ''),
-    'is_sandstorm'                 => env('IS_SANDSTORM', 'unknown'),
-    'is_docker'                    => env('IS_DOCKER', 'unknown'),
-    'bunq_use_sandbox'             => env('BUNQ_USE_SANDBOX', false),
     'fixer_api_key'                => env('FIXER_API_KEY', ''),
     'mapbox_api_key'               => env('MAPBOX_API_KEY', ''),
     'trusted_proxies'              => env('TRUSTED_PROXIES', ''),
-    'search_result_limit'          => env('SEARCH_RESULT_LIMIT', 50),
     'send_report_journals'         => envNonEmpty('SEND_REPORT_JOURNALS', true),
-    'analytics_id'                 => env('ANALYTICS_ID', ''),
+    'tracker_site_id'              => env('TRACKER_SITE_ID', ''),
+    'tracker_url'                  => env('TRACKER_URL', ''),
     'disable_frame_header'         => env('DISABLE_FRAME_HEADER', false),
+    'disable_csp_header'           => env('DISABLE_CSP_HEADER', false),
     'login_provider'               => envNonEmpty('LOGIN_PROVIDER', 'eloquent'),
+    'authentication_guard'         => envNonEmpty('AUTHENTICATION_GUARD', 'web'),
+    'custom_logout_uri'            => envNonEmpty('CUSTOM_LOGOUT_URI', ''),
+    'cer_provider'                 => envNonEmpty('CER_PROVIDER', 'fixer'),
+    'update_endpoint'              => 'https://version.firefly-iii.org/index.json',
+    'send_telemetry'               => env('SEND_TELEMETRY', false),
+    'allow_webhooks'               => env('ALLOW_WEBHOOKS', false),
+    'telemetry_endpoint'           => 'https://telemetry.firefly-iii.org',
+    'layout'                       => envNonEmpty('FIREFLY_III_LAYOUT', 'v1'),
+    'update_minimum_age'           => 6,
+    'default_location'             => [
+        'longitude'  => env('MAP_DEFAULT_LONG', '5.916667'),
+        'latitude'   => env('MAP_DEFAULT_LAT', '51.983333'),
+        'zoom_level' => env('MAP_DEFAULT_ZOOM', '6'),
+    ],
+    'valid_attachment_models'      => [
+        Account::class,
+        Bill::class,
+        Budget::class,
+        Category::class,
+        PiggyBank::class,
+        Tag::class,
+        Transaction::class,
+        TransactionJournal::class,
+        Recurrence::class,
+    ],
     'allowedMimes'                 => [
         /* plain files */
         'text/plain',
@@ -124,7 +155,6 @@ return [
 
         /* PDF */
         'application/pdf',
-
 
         /* MS word */
         'application/msword',
@@ -174,11 +204,6 @@ return [
         'application/vnd.oasis.opendocument.image',
     ],
     'list_length'                  => 10,
-    'export_formats'               => [
-        'csv' => CsvExporter::class,
-    ],
-    'default_export_format'        => 'csv',
-    'default_import_format'        => 'csv',
     'bill_periods'                 => ['weekly', 'monthly', 'quarterly', 'half-year', 'yearly'],
     'accountRoles'                 => ['defaultAsset', 'sharedAsset', 'savingAsset', 'ccAsset', 'cashWalletAsset'],
     'ccTypes'                      => [
@@ -193,99 +218,110 @@ return [
         '1Y'     => 'yearly',
         'custom' => 'custom',
     ],
-    'subTitlesByIdentifier'        =>
-        [
-            'asset'       => 'Asset accounts',
-            'expense'     => 'Expense accounts',
-            'revenue'     => 'Revenue accounts',
-            'cash'        => 'Cash accounts',
-            'liabilities' => 'Liabilities',
-            'liability'   => 'Liabilities',
-        ],
-    'subIconsByIdentifier'         =>
-        [
-            'asset'               => 'fa-money',
-            'Asset account'       => 'fa-money',
-            'Default account'     => 'fa-money',
-            'Cash account'        => 'fa-money',
-            'expense'             => 'fa-shopping-cart',
-            'Expense account'     => 'fa-shopping-cart',
-            'Beneficiary account' => 'fa-shopping-cart',
-            'revenue'             => 'fa-download',
-            'Revenue account'     => 'fa-download',
-            'import'              => 'fa-download',
-            'Import account'      => 'fa-download',
-            'liabilities'         => 'fa-ticket',
-        ],
-    'accountTypesByIdentifier'     =>
-        [
-            'asset'       => ['Default account', 'Asset account'],
-            'expense'     => ['Expense account', 'Beneficiary account'],
-            'revenue'     => ['Revenue account'],
-            'import'      => ['Import account'],
-            'liabilities' => ['Loan', 'Debt', 'Credit card', 'Mortgage'],
-        ],
-    'accountTypeByIdentifier'      =>
-        [
-            'asset'       => ['Asset account'],
-            'expense'     => ['Expense account'],
-            'revenue'     => ['Revenue account'],
-            'opening'     => ['Initial balance account'],
-            'initial'     => ['Initial balance account'],
-            'import'      => ['Import account'],
-            'reconcile'   => ['Reconciliation account'],
-            'liabilities' => ['Loan', 'Debt', 'Mortgage', 'Credit card'],
-            'liability'   => ['Loan', 'Debt', 'Mortgage', 'Credit card'],
-        ],
-    'shortNamesByFullName'         =>
-        [
-            'Default account'     => 'asset',
-            'Asset account'       => 'asset',
-            'Import account'      => 'import',
-            'Expense account'     => 'expense',
-            'Beneficiary account' => 'expense',
-            'Revenue account'     => 'revenue',
-            'Cash account'        => 'cash',
-            'Credit card'         => 'liabilities',
-            'Loan'                => 'liabilities',
-            'Debt'                => 'liabilities',
-            'Mortgage'            => 'liabilities',
-        ],
-    'shortLiabilityNameByFullName' => [
-        'Credit card' => 'creditcard',
-        'Loan'        => 'loan',
-        'Debt'        => 'debt',
-        'Mortgage'    => 'mortgage',
+    'subTitlesByIdentifier'        => [
+        'asset'       => 'Asset accounts',
+        'expense'     => 'Expense accounts',
+        'revenue'     => 'Revenue accounts',
+        'cash'        => 'Cash accounts',
+        'liabilities' => 'Liabilities',
+        'liability'   => 'Liabilities',
     ],
+    'subIconsByIdentifier'         => [
+        'asset'                  => 'fa-money',
+        AccountType::ASSET       => 'fa-money',
+        AccountType::DEFAULT     => 'fa-money',
+        AccountType::CASH        => 'fa-money',
+        'expense'                => 'fa-shopping-cart',
+        AccountType::EXPENSE     => 'fa-shopping-cart',
+        AccountType::BENEFICIARY => 'fa-shopping-cart',
+        'revenue'                => 'fa-download',
+        AccountType::REVENUE     => 'fa-download',
+        'import'                 => 'fa-download',
+        AccountType::IMPORT      => 'fa-download',
+        'liabilities'            => 'fa-ticket',
+    ],
+    'accountTypesByIdentifier'     => [
+        'asset'       => [AccountType::DEFAULT, AccountType::ASSET],
+        'expense'     => [AccountType::EXPENSE, AccountType::BENEFICIARY],
+        'revenue'     => [AccountType::REVENUE],
+        'import'      => [AccountType::IMPORT],
+        'liabilities' => [AccountType::LOAN, AccountType::DEBT, AccountType::CREDITCARD, AccountType::MORTGAGE],
+    ],
+    'accountTypeByIdentifier'      => [
+        'asset'       => [AccountType::ASSET],
+        'expense'     => [AccountType::EXPENSE],
+        'revenue'     => [AccountType::REVENUE],
+        'opening'     => [AccountType::INITIAL_BALANCE],
+        'initial'     => [AccountType::INITIAL_BALANCE],
+        'import'      => [AccountType::IMPORT],
+        'reconcile'   => [AccountType::RECONCILIATION],
+        'liabilities' => [AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE, AccountType::CREDITCARD],
+        'liability'   => [AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE, AccountType::CREDITCARD],
+    ],
+    'shortNamesByFullName'         => [
+        AccountType::DEFAULT         => 'asset',
+        AccountType::ASSET           => 'asset',
+        AccountType::IMPORT          => 'import',
+        AccountType::EXPENSE         => 'expense',
+        AccountType::BENEFICIARY     => 'expense',
+        AccountType::REVENUE         => 'revenue',
+        AccountType::CASH            => 'cash',
+        AccountType::INITIAL_BALANCE => 'initial-balance',
+        AccountType::RECONCILIATION  => 'reconciliation',
+        AccountType::CREDITCARD      => 'liabilities',
+        AccountType::LOAN            => 'liabilities',
+        AccountType::DEBT            => 'liabilities',
+        AccountType::MORTGAGE        => 'liabilities',
+    ],
+    'shortLiabilityNameByFullName' => [
+        AccountType::CREDITCARD => 'creditcard',
+        AccountType::LOAN       => AccountType::LOAN,
+        AccountType::DEBT       => AccountType::DEBT,
+        AccountType::MORTGAGE   => AccountType::MORTGAGE,
+    ],
+    /**
+     * Languages configuration.
+     */
     'languages'                    => [
-        // completed languages
-        'en_US' => ['name_locale' => 'English', 'name_english' => 'English'],
-        'es_ES' => ['name_locale' => 'Español', 'name_english' => 'Spanish'], // 2018-10-26: 96%
-        'de_DE' => ['name_locale' => 'Deutsch', 'name_english' => 'German'],  // 2018-10-26: 100%
-        'fr_FR' => ['name_locale' => 'Français', 'name_english' => 'French'], // 2018-10-26: 100%
-        //'id_ID' => ['name_locale' => 'Bahasa Indonesia', 'name_english' => 'Indonesian'], // 2018-12-23: 65%
-        'it_IT' => ['name_locale' => 'Italiano', 'name_english' => 'Italian'], // 2018-10-26: 100%
-        'nl_NL' => ['name_locale' => 'Nederlands', 'name_english' => 'Dutch'], // 2018-10-26: 100%
-        'pl_PL' => ['name_locale' => 'Polski', 'name_english' => 'Polish '], // 2018-10-26: 76%
-        'pt_BR' => ['name_locale' => 'Português do Brasil', 'name_english' => 'Portuguese (Brazil)'], // 2018-10-26: 77%
-        'ru_RU' => ['name_locale' => 'Русский', 'name_english' => 'Russian'], // 2018-10-26: 80%
-        'zh_TW' => ['name_locale' => 'Chinese Traditional', 'name_english' => 'Chinese Traditional'], // 2018-12-23: 99%
-        //'tr_TR' => ['name_locale' => 'Türkçe', 'name_english' => 'Turkish'], // 2018-12-23: 70%
-
-        // 
-
-        // very far away:
-        //'nb_NO' => ['name_locale' => 'Norwegian', 'name_english' => 'Norwegian'], // 2018-10-26: 52%
-        //'ca_ES' => ['name_locale' => 'Catalan', 'name_english' => 'Catalan'], // 2018-10-26: 0%
-        //'cs_CZ' => ['name_locale' => 'Czech', 'name_english' => 'Czech'], // 2018-10-26: 8%
-        //'he_IL' => ['name_locale' => 'Hebrew', 'name_english' => 'Hebrew'], // 2018-10-26: 3%
-        //'hu_HU' => ['name_locale' => 'Hungarian', 'name_english' => 'Hungarian'], // 2018-10-26: 40%
-
-        //'sv_SE' => ['name_locale' => 'Svenska', 'name_english' => 'Swedish'], // 2018-11-21: 1%
-        //'sl_SI' => ['name_locale' => 'Slovenian', 'name_english' => 'Slovenian'], // 2018-10-26: 10%
-        //'uk_UA' => ['name_locale' => 'Ukranian', 'name_english' => 'Ukranian'], // 2018-10-26: 3%
-
-
+        // currently enabled languages
+        'bg_BG' => ['name_locale' => 'Български', 'name_english' => 'Bulgarian'],
+        // 'ca_ES' => ['name_locale' => 'Catalan', 'name_english' => 'Catalan'],
+        'cs_CZ' => ['name_locale' => 'Czech', 'name_english' => 'Czech'],
+        // 'da_DK' => ['name_locale' => 'Danish', 'name_english' => 'Danish'],
+        'de_DE' => ['name_locale' => 'Deutsch', 'name_english' => 'German'],
+        'el_GR' => ['name_locale' => 'Ελληνικά', 'name_english' => 'Greek'],
+        'en_GB' => ['name_locale' => 'English (GB)', 'name_english' => 'English (GB)'],
+        'en_US' => ['name_locale' => 'English (US)', 'name_english' => 'English (US)'],
+        'es_ES' => ['name_locale' => 'Español', 'name_english' => 'Spanish'],
+        // 'et_EE' => ['name_locale' => 'Estonian', 'name_english' => 'Estonian'],
+        // 'fa_IR' => ['name_locale' => 'فارسی', 'name_english' => 'Persian'],
+        'fi_FI' => ['name_locale' => 'Suomi', 'name_english' => 'Finnish'],
+        'fr_FR' => ['name_locale' => 'Français', 'name_english' => 'French'],
+        // 'he_IL' => ['name_locale' => 'Hebrew', 'name_english' => 'Hebrew'],
+        'hu_HU' => ['name_locale' => 'Hungarian', 'name_english' => 'Hungarian'],
+        // 'id_ID' => ['name_locale' => 'Bahasa Indonesia', 'name_english' => 'Indonesian'],
+        // 'is_IS' => ['name_locale' => 'Icelandic', 'name_english' => 'Icelandic'],
+        'it_IT' => ['name_locale' => 'Italiano', 'name_english' => 'Italian'],
+        // 'ja_JA' => ['name_locale' => 'Japanese', 'name_english' => 'Japanese'],
+        // 'lt_LT' => ['name_locale' => 'Lietuvių', 'name_english' => 'Lithuanian'],
+        'nb_NO' => ['name_locale' => 'Norsk', 'name_english' => 'Norwegian'],
+        'nl_NL' => ['name_locale' => 'Nederlands', 'name_english' => 'Dutch'],
+        'pl_PL' => ['name_locale' => 'Polski', 'name_english' => 'Polish '],
+        'pt_BR' => ['name_locale' => 'Português do Brasil', 'name_english' => 'Portuguese (Brazil)'],
+        // 'pt_PT' => ['name_locale' => 'Portuguese', 'name_english' => 'Portuguese'],
+        'ro_RO' => ['name_locale' => 'Română', 'name_english' => 'Romanian'],
+        'ru_RU' => ['name_locale' => 'Русский', 'name_english' => 'Russian'],
+        // 'si_LK' => ['name_locale' => 'සිංහල', 'name_english' => 'Sinhala (Sri Lanka)'],
+        'sk_SK' => ['name_locale' => 'Slovenčina', 'name_english' => 'Slovak'],
+        // 'sl_SI' => ['name_locale' => 'Slovenian', 'name_english' => 'Slovenian'],
+        // 'sr_CS' => ['name_locale' => 'Serbian (Latin)', 'name_english' => 'Serbian (Latin)'],
+        'sv_SE' => ['name_locale' => 'Svenska', 'name_english' => 'Swedish'],
+        // 'tlh_AA' => ['name_locale' => 'tlhIngan Hol', 'name_english' => 'Klingon'],
+        // 'tr_TR' => ['name_locale' => 'Türkçe', 'name_english' => 'Turkish'],
+        // 'uk_UA' => ['name_locale' => 'Ukranian', 'name_english' => 'Ukranian'],
+        'vi_VN' => ['name_locale' => 'Tiếng Việt', 'name_english' => 'Vietnamese'],
+        'zh_TW' => ['name_locale' => 'Chinese Traditional', 'name_english' => 'Chinese Traditional'],
+        'zh_CN' => ['name_locale' => 'Chinese Simplified', 'name_english' => 'Chinese Simplified'],
     ],
     'transactionTypesByWhat'       => [
         'expenses'   => ['Withdrawal'],
@@ -295,14 +331,22 @@ return [
         'transfer'   => ['Transfer'],
         'transfers'  => ['Transfer'],
     ],
-    'transactionTypesToShort'                 => [
+    'transactionTypesByType'       => [
+        'expenses'   => ['Withdrawal'],
+        'withdrawal' => ['Withdrawal'],
+        'revenue'    => ['Deposit'],
+        'deposit'    => ['Deposit'],
+        'transfer'   => ['Transfer'],
+        'transfers'  => ['Transfer'],
+    ],
+    'transactionTypesToShort'      => [
         'Withdrawal'      => 'withdrawal',
         'Deposit'         => 'deposit',
         'Transfer'        => 'transfer',
         'Opening balance' => 'opening-balance',
         'Reconciliation'  => 'reconciliation',
     ],
-    'transactionIconsByWhat'       => [
+    'transactionIconsByType'       => [
         'expenses'   => 'fa-long-arrow-left',
         'withdrawal' => 'fa-long-arrow-left',
         'revenue'    => 'fa-long-arrow-right',
@@ -313,92 +357,52 @@ return [
     ],
     'bindables'                    => [
         // models
-        'account'           => \FireflyIII\Models\Account::class,
-        'attachment'        => \FireflyIII\Models\Attachment::class,
-        'availableBudget'   => \FireflyIII\Models\AvailableBudget::class,
-        'bill'              => \FireflyIII\Models\Bill::class,
-        'budget'            => \FireflyIII\Models\Budget::class,
-        'budgetLimit'       => \FireflyIII\Models\BudgetLimit::class,
-        'category'          => \FireflyIII\Models\Category::class,
-        'linkType'          => \FireflyIII\Models\LinkType::class,
-        'transactionType'   => \FireflyIII\Models\TransactionType::class,
-        'journalLink'       => \FireflyIII\Models\TransactionJournalLink::class,
-        'currency'          => \FireflyIII\Models\TransactionCurrency::class,
-        'piggyBank'         => \FireflyIII\Models\PiggyBank::class,
-        'preference'        => \FireflyIII\Models\Preference::class,
-        'tj'                => \FireflyIII\Models\TransactionJournal::class,
-        'tag'               => \FireflyIII\Models\Tag::class,
-        'recurrence'        => \FireflyIII\Models\Recurrence::class,
-        'rule'              => \FireflyIII\Models\Rule::class,
-        'ruleGroup'         => \FireflyIII\Models\RuleGroup::class,
-        'exportJob'         => \FireflyIII\Models\ExportJob::class,
-        'importJob'         => \FireflyIII\Models\ImportJob::class,
-        'transaction'       => \FireflyIII\Models\Transaction::class,
-        'user'              => \FireflyIII\User::class,
+        'account'          => Account::class,
+        'attachment'       => Attachment::class,
+        'availableBudget'  => AvailableBudget::class,
+        'bill'             => Bill::class,
+        'budget'           => Budget::class,
+        'budgetLimit'      => BudgetLimit::class,
+        'category'         => Category::class,
+        'linkType'         => LinkType::class,
+        'transactionType'  => TransactionTypeModel::class,
+        'journalLink'      => TransactionJournalLink::class,
+        'currency'         => TransactionCurrency::class,
+        'objectGroup'      => ObjectGroup::class,
+        'piggyBank'        => PiggyBank::class,
+        'preference'       => Preference::class,
+        'tj'               => TransactionJournal::class,
+        'tag'              => Tag::class,
+        'recurrence'       => Recurrence::class,
+        'rule'             => Rule::class,
+        'ruleGroup'        => RuleGroup::class,
+        'transactionGroup' => TransactionGroup::class,
+        'user'             => User::class,
+        'webhook'          => Webhook::class,
 
         // strings
-        'import_provider'   => \FireflyIII\Support\Binder\ImportProvider::class,
-        'currency_code'     => \FireflyIII\Support\Binder\CurrencyCode::class,
+        'currency_code'    => CurrencyCode::class,
 
         // dates
-        'start_date'        => \FireflyIII\Support\Binder\Date::class,
-        'end_date'          => \FireflyIII\Support\Binder\Date::class,
-        'date'              => \FireflyIII\Support\Binder\Date::class,
+        'start_date'       => Date::class,
+        'end_date'         => Date::class,
+        'date'             => Date::class,
 
         // lists
-        'accountList'       => \FireflyIII\Support\Binder\AccountList::class,
-        'expenseList'       => \FireflyIII\Support\Binder\AccountList::class,
-        'budgetList'        => \FireflyIII\Support\Binder\BudgetList::class,
-        'journalList'       => \FireflyIII\Support\Binder\JournalList::class,
-        'categoryList'      => \FireflyIII\Support\Binder\CategoryList::class,
-        'tagList'           => \FireflyIII\Support\Binder\TagList::class,
-        'simpleJournalList' => \FireflyIII\Support\Binder\SimpleJournalList::class,
+        'accountList'      => AccountList::class,
+        'doubleList'       => AccountList::class,
+        'budgetList'       => BudgetList::class,
+        'journalList'      => JournalList::class,
+        'categoryList'     => CategoryList::class,
+        'tagList'          => TagList::class,
 
         // others
-        'fromCurrencyCode'  => \FireflyIII\Support\Binder\CurrencyCode::class,
-        'toCurrencyCode'    => \FireflyIII\Support\Binder\CurrencyCode::class,
-        'unfinishedJournal' => \FireflyIII\Support\Binder\UnfinishedJournal::class,
-        'cliToken'          => \FireflyIII\Support\Binder\CLIToken::class,
-        'tagOrId'           => \FireflyIII\Support\Binder\TagOrId::class,
-        'configName'        => \FireflyIII\Support\Binder\ConfigurationName::class,
+        'fromCurrencyCode' => CurrencyCode::class,
+        'toCurrencyCode'   => CurrencyCode::class,
+        'cliToken'         => CLIToken::class,
+        'tagOrId'          => TagOrId::class,
+        'configName'       => ConfigurationName::class,
 
-
-    ],
-    'rule-triggers'                => [
-        'user_action'           => UserAction::class,
-        'from_account_starts'   => FromAccountStarts::class,
-        'from_account_ends'     => FromAccountEnds::class,
-        'from_account_is'       => FromAccountIs::class,
-        'from_account_contains' => FromAccountContains::class,
-        'to_account_starts'     => ToAccountStarts::class,
-        'to_account_ends'       => ToAccountEnds::class,
-        'to_account_is'         => ToAccountIs::class,
-        'to_account_contains'   => ToAccountContains::class,
-        'amount_less'           => AmountLess::class,
-        'amount_exactly'        => AmountExactly::class,
-        'amount_more'           => AmountMore::class,
-        'description_starts'    => DescriptionStarts::class,
-        'description_ends'      => DescriptionEnds::class,
-        'description_contains'  => DescriptionContains::class,
-        'description_is'        => DescriptionIs::class,
-        'transaction_type'      => TransactionType::class,
-        'category_is'           => CategoryIs::class,
-        'budget_is'             => BudgetIs::class,
-        'tag_is'                => TagIs::class,
-        'currency_is'           => CurrencyIs::class,
-        'has_attachments'       => HasAttachment::class,
-        'has_no_category'       => HasNoCategory::class,
-        'has_any_category'      => HasAnyCategory::class,
-        'has_no_budget'         => HasNoBudget::class,
-        'has_any_budget'        => HasAnyBudget::class,
-        'has_no_tag'            => HasNoTag::class,
-        'has_any_tag'           => HasAnyTag::class,
-        'notes_contain'         => NotesContain::class,
-        'notes_start'           => NotesStart::class,
-        'notes_end'             => NotesEnd::class,
-        'notes_are'             => NotesAre::class,
-        'no_notes'              => NotesEmpty::class,
-        'any_notes'             => NotesAny::class,
     ],
     'rule-actions'                 => [
         'set_category'            => SetCategory::class,
@@ -421,6 +425,8 @@ return [
         'convert_withdrawal'      => ConvertToWithdrawal::class,
         'convert_deposit'         => ConvertToDeposit::class,
         'convert_transfer'        => ConvertToTransfer::class,
+        'update_piggy'            => UpdatePiggybank::class,
+        'delete_transaction'      => DeleteTransaction::class,
     ],
     'context-rule-actions'         => [
         'set_category',
@@ -436,45 +442,401 @@ return [
         'append_notes',
         'prepend_notes',
         'link_to_bill',
-        'convert_withdrawal',
-        'convert_deposit',
+        //        'convert_withdrawal',
+        //        'convert_deposit',
         'convert_transfer',
     ],
-    'context-rule-triggers'        => [
-        'from_account_starts',
-        'from_account_ends',
-        'from_account_is',
-        'from_account_contains',
-        'to_account_starts',
-        'to_account_ends',
-        'to_account_is',
-        'to_account_contains',
-        'amount_less',
-        'amount_exactly',
-        'amount_more',
-        'description_starts',
-        'description_ends',
-        'description_contains',
-        'description_is',
-        'transaction_type',
-        'category_is',
-        'budget_is',
-        'tag_is',
-        'currency_is',
-        'notes_contain',
-        'notes_start',
-        'notes_end',
-        'notes_are',
-    ],
-
 
     'test-triggers'    => [
         'limit' => 10,
         'range' => 200,
     ],
     'default_currency' => 'EUR',
-    'default_language' => 'en_US',
-    'search_modifiers' => ['amount_is', 'amount', 'amount_max', 'amount_min', 'amount_less', 'amount_more', 'source', 'destination', 'category',
-                           'budget', 'bill', 'type', 'date', 'date_before', 'date_after', 'on', 'before', 'after'],
-    // tag notes has_attachments
+    'default_language' => envNonEmpty('DEFAULT_LANGUAGE', 'en_US'),
+    'default_locale'   => envNonEmpty('DEFAULT_LOCALE', 'equal'),
+
+    'search'                    => [
+        'operators' => [
+            'user_action'          => ['alias' => false, 'needs_context' => true,],
+            'description_starts'   => ['alias' => false, 'needs_context' => true,],
+            'description_ends'     => ['alias' => false, 'needs_context' => true,],
+            'description_contains' => ['alias' => false, 'needs_context' => true,],
+            'description_is'       => ['alias' => false, 'needs_context' => true,],
+            'description'          => ['alias' => true, 'alias_for' => 'description_contains', 'needs_context' => true,],
+
+            'currency_is'         => ['alias' => false, 'needs_context' => true,],
+            'foreign_currency_is' => ['alias' => false, 'needs_context' => true,],
+
+            'has_attachments'                 => ['alias' => false, 'needs_context' => false,],
+            'has_no_category'                 => ['alias' => false, 'needs_context' => false,],
+            'has_any_category'                => ['alias' => false, 'needs_context' => false,],
+            'has_no_budget'                   => ['alias' => false, 'needs_context' => false,],
+            'has_any_budget'                  => ['alias' => false, 'needs_context' => false,],
+            'has_no_tag'                      => ['alias' => false, 'needs_context' => false,],
+            'has_any_tag'                     => ['alias' => false, 'needs_context' => false,],
+            'notes_contain'                   => ['alias' => false, 'needs_context' => true,],
+            'notes_start'                     => ['alias' => false, 'needs_context' => true,],
+            'notes_end'                       => ['alias' => false, 'needs_context' => true,],
+            'notes_are'                       => ['alias' => false, 'needs_context' => true,],
+            'no_notes'                        => ['alias' => false, 'needs_context' => false,],
+            'any_notes'                       => ['alias' => false, 'needs_context' => false,],
+
+            // one exact (or array of) journals:
+            'id'                              => ['alias' => false, 'trigger_class' => null, 'needs_context' => true,],
+            'journal_id'                      => ['alias' => false, 'trigger_class' => null, 'needs_context' => true,],
+
+            // exact amount
+            'amount_exactly'                  => ['alias' => false, 'needs_context' => true,],
+            'amount_is'                       => ['alias' => true, 'alias_for' => 'amount_exactly', 'needs_context' => true,],
+            'amount'                          => ['alias' => true, 'alias_for' => 'amount_exactly', 'needs_context' => true,],
+
+            // is less than
+            'amount_less'                     => ['alias' => false, 'needs_context' => true,],
+            'amount_max'                      => ['alias' => true, 'alias_for' => 'amount_less', 'needs_context' => true,],
+
+            // is more than
+            'amount_more'                     => ['alias' => false, 'needs_context' => true,],
+            'amount_min'                      => ['alias' => true, 'alias_for' => 'amount_more', 'needs_context' => true,],
+
+            // source account name is + alias:
+            'source_account_is'               => ['alias' => false, 'needs_context' => true,],
+            'from_account_is'                 => ['alias' => true, 'alias_for' => 'source_account_is', 'needs_context' => true,],
+
+            // source or dest is cash account?
+            'source_is_cash'                  => ['alias' => false, 'needs_context' => false],
+            'destination_is_cash'             => ['alias' => false, 'needs_context' => false],
+            'account_is_cash'                 => ['alias' => false, 'needs_context' => false],
+
+            // source account name contains + alias
+            'source_account_contains'         => ['alias' => false, 'needs_context' => true,],
+            'from_account_contains'           => ['alias' => true, 'alias_for' => 'source_account_contains', 'needs_context' => true,],
+            'source'                          => ['alias' => true, 'alias_for' => 'source_account_contains', 'needs_context' => true,],
+            'from'                            => ['alias' => true, 'alias_for' => 'source_account_contains', 'needs_context' => true,],
+
+            // source account name starts with + alias
+            'source_account_starts'           => ['alias' => false, 'needs_context' => true,],
+            'from_account_starts'             => ['alias' => true, 'alias_for' => 'source_account_starts', 'needs_context' => true,],
+
+            // source account name ends with + alias
+            'source_account_ends'             => ['alias' => false, 'needs_context' => true,],
+            'from_account_ends'               => ['alias' => true, 'alias_for' => 'source_account_ends', 'needs_context' => true,],
+
+            // source account ID + alias
+            'source_account_id'               => ['alias' => false, 'needs_context' => true,],
+            'from_account_id'                 => ['alias' => true, 'alias_for' => 'source_account_id', 'needs_context' => true,],
+
+            // source account number is
+            'source_account_nr_is'            => ['alias' => false, 'needs_context' => true,],
+            'from_account_nr_is'              => ['alias' => true, 'alias_for' => 'source_account_nr_is', 'needs_context' => true,],
+
+            // source account number contains
+            'source_account_nr_contains'      => ['alias' => false, 'needs_context' => true,],
+            'from_account_nr_contains'        => ['alias' => true, 'alias_for' => 'source_account_nr_contains', 'needs_context' => true,],
+
+            // source account number starts with
+            'source_account_nr_starts'        => ['alias' => false, 'needs_context' => true,],
+            'from_account_nr_starts'          => ['alias' => true, 'alias_for' => 'source_account_nr_starts', 'needs_context' => true,],
+
+            // source account number ends with
+            'source_account_nr_ends'          => ['alias' => false, 'needs_context' => true,],
+            'from_account_nr_ends'            => ['alias' => true, 'alias_for' => 'source_account_nr_ends', 'needs_context' => true,],
+
+            // destination account name is + alias
+            'destination_account_is'          => ['alias' => false, 'needs_context' => true,],
+            'to_account_is'                   => ['alias' => true, 'alias_for' => 'destination_account_is', 'needs_context' => true,],
+
+            // destination account name contains + alias
+            'destination_account_contains'    => ['alias' => false, 'needs_context' => true,],
+            'to_account_contains'             => ['alias' => true, 'alias_for' => 'destination_account_contains', 'needs_context' => true,],
+            'destination'                     => ['alias' => true, 'alias_for' => 'destination_account_contains', 'needs_context' => true,],
+            'to'                              => ['alias' => true, 'alias_for' => 'destination_account_contains', 'needs_context' => true,],
+
+            // destination account name starts with + alias
+            'destination_account_starts'      => ['alias' => false, 'needs_context' => true,],
+            'to_account_starts'               => ['alias' => true, 'alias_for' => 'destination_account_starts', 'needs_context' => true,],
+
+            // destination account name ends with + alias
+            'destination_account_ends'        => ['alias' => false, 'needs_context' => true,],
+            'to_account_ends'                 => ['alias' => true, 'alias_for' => 'destination_account_ends', 'needs_context' => true,],
+
+            // destination account ID + alias
+            'destination_account_id'          => ['alias' => false, 'needs_context' => true,],
+            'to_account_id'                   => ['alias' => true, 'alias_for' => 'destination_account_id', 'needs_context' => true,],
+
+            // destination account number is
+            'destination_account_nr_is'       => ['alias' => false, 'needs_context' => true,],
+            'to_account_nr_is'                => ['alias' => true, 'alias_for' => 'destination_account_nr_is', 'needs_context' => true,],
+
+            // destination account number contains
+            'destination_account_nr_contains' => ['alias' => false, 'needs_context' => true,],
+            'to_account_nr_contains'          => ['alias' => true, 'alias_for' => 'destination_account_nr_contains', 'needs_context' => true,],
+
+            // destination account number starts with
+            'destination_account_nr_starts'   => ['alias' => false, 'needs_context' => true,],
+            'to_account_nr_starts'            => ['alias' => true, 'alias_for' => 'destination_account_nr_starts', 'needs_context' => true,],
+
+            // destination account number ends with
+            'destination_account_nr_ends'     => ['alias' => false, 'needs_context' => true,],
+            'to_account_nr_ends'              => ['alias' => true, 'alias_for' => 'destination_account_nr_ends', 'needs_context' => true,],
+
+            // any account id is
+            'account_id'                      => ['alias' => false, 'needs_context' => true,],
+
+            // category
+            'category_is'                     => ['alias' => false, 'needs_context' => true,],
+            'category'                        => ['alias' => true, 'alias_for' => 'category_is', 'needs_context' => true,],
+
+            // budget
+            'budget_is'                       => ['alias' => false, 'needs_context' => true,],
+            'budget'                          => ['alias' => true, 'alias_for' => 'budget_is', 'needs_context' => true,],
+
+            // bill
+            'bill_is'                         => ['alias' => false, 'needs_context' => true,],
+            'bill'                            => ['alias' => true, 'alias_for' => 'bill_is', 'needs_context' => true,],
+
+            // type
+            'transaction_type'                => ['alias' => false, 'needs_context' => true,],
+            'type'                            => ['alias' => true, 'alias_for' => 'transaction_type', 'needs_context' => true,],
+
+            // date:
+            'date_is'                         => ['alias' => false, 'needs_context' => true,],
+            'date'                            => ['alias' => true, 'alias_for' => 'date_is', 'needs_context' => true,],
+            'on'                              => ['alias' => true, 'alias_for' => 'date_is', 'needs_context' => true,],
+            'date_before'                     => ['alias' => false, 'needs_context' => true,],
+            'before'                          => ['alias' => true, 'alias_for' => 'date_before', 'needs_context' => true,],
+            'date_after'                      => ['alias' => false, 'needs_context' => true,],
+            'after'                           => ['alias' => true, 'alias_for' => 'date_after', 'needs_context' => true,],
+
+            // other interesting fields
+            'tag_is'                          => ['alias' => false, 'needs_context' => true,],
+            'tag'                             => ['alias' => true, 'alias_for' => 'tag_is', 'needs_context' => true,],
+            'created_on'                      => ['alias' => false, 'needs_context' => true,],
+            'created_at'                      => ['alias' => true, 'alias_for' => 'created_on', 'needs_context' => true,],
+            'updated_on'                      => ['alias' => false, 'needs_context' => true,],
+            'updated_at'                      => ['alias' => true, 'alias_for' => 'updated_on', 'needs_context' => true,],
+            'external_id'                     => ['alias' => false, 'needs_context' => true,],
+            'internal_reference'              => ['alias' => false, 'needs_context' => true,],
+
+        ],
+    ],
+
+    // expected source types for each transaction type, in order of preference.
+    'expected_source_types'     => [
+        'source'      => [
+            TransactionTypeModel::WITHDRAWAL      => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            TransactionTypeModel::DEPOSIT         => [AccountType::REVENUE, AccountType::CASH, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE,
+                                                      AccountType::INITIAL_BALANCE, AccountType::RECONCILIATION,],
+            TransactionTypeModel::TRANSFER        => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            TransactionTypeModel::OPENING_BALANCE => [AccountType::INITIAL_BALANCE, AccountType::ASSET, AccountType::LOAN, AccountType::DEBT,
+                                                      AccountType::MORTGAGE,],
+            TransactionTypeModel::RECONCILIATION  => [AccountType::RECONCILIATION, AccountType::ASSET],
+            // in case no transaction type is known yet, it could be anything.
+            'none'                                => [
+                AccountType::ASSET,
+                AccountType::EXPENSE,
+                AccountType::REVENUE,
+                AccountType::LOAN,
+                AccountType::DEBT,
+                AccountType::MORTGAGE,
+            ],
+        ],
+        'destination' => [
+            TransactionTypeModel::WITHDRAWAL      => [AccountType::EXPENSE, AccountType::CASH, AccountType::LOAN, AccountType::DEBT,
+                                                      AccountType::MORTGAGE,],
+            TransactionTypeModel::DEPOSIT         => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            TransactionTypeModel::TRANSFER        => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            TransactionTypeModel::OPENING_BALANCE => [AccountType::INITIAL_BALANCE, AccountType::ASSET, AccountType::LOAN, AccountType::DEBT,
+                                                      AccountType::MORTGAGE,],
+            TransactionTypeModel::RECONCILIATION  => [AccountType::RECONCILIATION, AccountType::ASSET],
+        ],
+    ],
+    'allowed_opposing_types'    => [
+        'source'      => [
+            AccountType::ASSET           => [AccountType::ASSET, AccountType::CASH, AccountType::DEBT, AccountType::EXPENSE, AccountType::INITIAL_BALANCE,
+                                             AccountType::LOAN, AccountType::RECONCILIATION, AccountType::MORTGAGE],
+            AccountType::CASH            => [AccountType::ASSET],
+            AccountType::DEBT            => [AccountType::ASSET, AccountType::DEBT, AccountType::EXPENSE, AccountType::INITIAL_BALANCE, AccountType::LOAN,
+                                             AccountType::MORTGAGE,],
+            AccountType::EXPENSE         => [], // is not allowed as a source.
+            AccountType::INITIAL_BALANCE => [AccountType::ASSET, AccountType::DEBT, AccountType::LOAN, AccountType::MORTGAGE],
+            AccountType::LOAN            => [AccountType::ASSET, AccountType::DEBT, AccountType::EXPENSE, AccountType::INITIAL_BALANCE, AccountType::LOAN,
+                                             AccountType::MORTGAGE,],
+            AccountType::MORTGAGE        => [AccountType::ASSET, AccountType::DEBT, AccountType::EXPENSE, AccountType::INITIAL_BALANCE, AccountType::LOAN,
+                                             AccountType::MORTGAGE,],
+            AccountType::RECONCILIATION  => [AccountType::ASSET],
+            AccountType::REVENUE         => [AccountType::ASSET, AccountType::DEBT, AccountType::LOAN, AccountType::MORTGAGE],
+
+        ],
+        'destination' => [
+            AccountType::ASSET           => [AccountType::ASSET, AccountType::CASH, AccountType::DEBT, AccountType::INITIAL_BALANCE, AccountType::LOAN,
+                                             AccountType::MORTGAGE, AccountType::RECONCILIATION, AccountType::REVENUE,],
+            AccountType::CASH            => [AccountType::ASSET],
+            AccountType::DEBT            => [AccountType::ASSET, AccountType::DEBT, AccountType::INITIAL_BALANCE, AccountType::LOAN, AccountType::MORTGAGE,
+                                             AccountType::REVENUE,],
+            AccountType::EXPENSE         => [AccountType::ASSET, AccountType::DEBT, AccountType::LOAN, AccountType::MORTGAGE],
+            AccountType::INITIAL_BALANCE => [AccountType::ASSET, AccountType::DEBT, AccountType::LOAN, AccountType::MORTGAGE],
+            AccountType::LOAN            => [AccountType::ASSET, AccountType::DEBT, AccountType::INITIAL_BALANCE, AccountType::LOAN, AccountType::MORTGAGE,
+                                             AccountType::REVENUE,],
+            AccountType::MORTGAGE        => [AccountType::ASSET, AccountType::DEBT, AccountType::INITIAL_BALANCE, AccountType::LOAN, AccountType::MORTGAGE,
+                                             AccountType::REVENUE,],
+            AccountType::RECONCILIATION  => [AccountType::ASSET],
+            AccountType::REVENUE         => [], // is not allowed as a destination
+        ],
+    ],
+    // depending on the account type, return the allowed transaction types:
+    'allowed_transaction_types' => [
+        'source'      => [
+            AccountType::ASSET           => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::TRANSFER, TransactionTypeModel::OPENING_BALANCE,
+                                             TransactionTypeModel::RECONCILIATION,],
+            AccountType::EXPENSE         => [], // is not allowed as a source.
+            AccountType::REVENUE         => [TransactionTypeModel::DEPOSIT],
+            AccountType::LOAN            => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER,
+                                             TransactionTypeModel::OPENING_BALANCE,],
+            AccountType::DEBT            => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER,
+                                             TransactionTypeModel::OPENING_BALANCE,],
+            AccountType::MORTGAGE        => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER,
+                                             TransactionTypeModel::OPENING_BALANCE,],
+            AccountType::INITIAL_BALANCE => [TransactionTypeModel::OPENING_BALANCE],
+            AccountType::RECONCILIATION  => [TransactionTypeModel::RECONCILIATION],
+        ],
+        'destination' => [
+            AccountType::ASSET           => [TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER, TransactionTypeModel::OPENING_BALANCE,
+                                             TransactionTypeModel::RECONCILIATION,],
+            AccountType::EXPENSE         => [TransactionTypeModel::WITHDRAWAL],
+            AccountType::REVENUE         => [], // is not allowed as destination.
+            AccountType::LOAN            => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER,
+                                             TransactionTypeModel::OPENING_BALANCE,],
+            AccountType::DEBT            => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER,
+                                             TransactionTypeModel::OPENING_BALANCE,],
+            AccountType::MORTGAGE        => [TransactionTypeModel::WITHDRAWAL, TransactionTypeModel::DEPOSIT, TransactionTypeModel::TRANSFER,
+                                             TransactionTypeModel::OPENING_BALANCE,],
+            AccountType::INITIAL_BALANCE => [TransactionTypeModel::OPENING_BALANCE],
+            AccountType::RECONCILIATION  => [TransactionTypeModel::RECONCILIATION],
+        ],
+
+    ],
+
+    // having the source + dest will tell you the transaction type.
+    'account_to_transaction'    => [
+        AccountType::ASSET           => [
+            AccountType::ASSET           => TransactionTypeModel::TRANSFER,
+            AccountType::CASH            => TransactionTypeModel::WITHDRAWAL,
+            AccountType::DEBT            => TransactionTypeModel::WITHDRAWAL,
+            AccountType::EXPENSE         => TransactionTypeModel::WITHDRAWAL,
+            AccountType::INITIAL_BALANCE => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::LOAN            => TransactionTypeModel::WITHDRAWAL,
+            AccountType::MORTGAGE        => TransactionTypeModel::WITHDRAWAL,
+            AccountType::RECONCILIATION  => TransactionTypeModel::RECONCILIATION,
+        ],
+        AccountType::CASH            => [
+            AccountType::ASSET => TransactionTypeModel::DEPOSIT,
+        ],
+        AccountType::DEBT            => [
+            AccountType::ASSET           => TransactionTypeModel::DEPOSIT,
+            AccountType::DEBT            => TransactionTypeModel::TRANSFER,
+            AccountType::EXPENSE         => TransactionTypeModel::WITHDRAWAL,
+            AccountType::INITIAL_BALANCE => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::LOAN            => TransactionTypeModel::TRANSFER,
+            AccountType::MORTGAGE        => TransactionTypeModel::TRANSFER,
+        ],
+        AccountType::INITIAL_BALANCE => [
+            AccountType::ASSET    => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::DEBT     => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::LOAN     => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::MORTGAGE => TransactionTypeModel::OPENING_BALANCE,
+        ],
+        AccountType::LOAN            => [
+            AccountType::ASSET           => TransactionTypeModel::DEPOSIT,
+            AccountType::DEBT            => TransactionTypeModel::TRANSFER,
+            AccountType::EXPENSE         => TransactionTypeModel::WITHDRAWAL,
+            AccountType::INITIAL_BALANCE => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::LOAN            => TransactionTypeModel::TRANSFER,
+            AccountType::MORTGAGE        => TransactionTypeModel::TRANSFER,
+        ],
+        AccountType::MORTGAGE        => [
+            AccountType::ASSET           => TransactionTypeModel::DEPOSIT,
+            AccountType::DEBT            => TransactionTypeModel::TRANSFER,
+            AccountType::EXPENSE         => TransactionTypeModel::WITHDRAWAL,
+            AccountType::INITIAL_BALANCE => TransactionTypeModel::OPENING_BALANCE,
+            AccountType::LOAN            => TransactionTypeModel::TRANSFER,
+            AccountType::MORTGAGE        => TransactionTypeModel::TRANSFER,
+        ],
+        AccountType::RECONCILIATION  => [
+            AccountType::ASSET => TransactionTypeModel::RECONCILIATION,
+        ],
+        AccountType::REVENUE         => [
+            AccountType::ASSET    => TransactionTypeModel::DEPOSIT,
+            AccountType::DEBT     => TransactionTypeModel::DEPOSIT,
+            AccountType::LOAN     => TransactionTypeModel::DEPOSIT,
+            AccountType::MORTGAGE => TransactionTypeModel::DEPOSIT,
+        ],
+    ],
+
+    // allowed source -> destination accounts.
+    'source_dests'              => [
+        TransactionTypeModel::WITHDRAWAL      => [
+            AccountType::ASSET    => [AccountType::EXPENSE, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE, AccountType::CASH],
+            AccountType::LOAN     => [AccountType::EXPENSE, AccountType::CASH],
+            AccountType::DEBT     => [AccountType::EXPENSE, AccountType::CASH],
+            AccountType::MORTGAGE => [AccountType::EXPENSE, AccountType::CASH],
+        ],
+        TransactionTypeModel::DEPOSIT         => [
+            AccountType::REVENUE  => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            AccountType::CASH     => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            AccountType::LOAN     => [AccountType::ASSET],
+            AccountType::DEBT     => [AccountType::ASSET],
+            AccountType::MORTGAGE => [AccountType::ASSET],
+        ],
+        TransactionTypeModel::TRANSFER        => [
+            AccountType::ASSET    => [AccountType::ASSET],
+            AccountType::LOAN     => [AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            AccountType::DEBT     => [AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+            AccountType::MORTGAGE => [AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+        ],
+        TransactionTypeModel::OPENING_BALANCE => [
+            AccountType::ASSET           => [AccountType::INITIAL_BALANCE],
+            AccountType::LOAN            => [AccountType::INITIAL_BALANCE],
+            AccountType::DEBT            => [AccountType::INITIAL_BALANCE],
+            AccountType::MORTGAGE        => [AccountType::INITIAL_BALANCE],
+            AccountType::INITIAL_BALANCE => [AccountType::ASSET, AccountType::LOAN, AccountType::DEBT, AccountType::MORTGAGE],
+        ],
+        TransactionTypeModel::RECONCILIATION  => [
+            AccountType::RECONCILIATION => [AccountType::ASSET],
+            AccountType::ASSET          => [AccountType::RECONCILIATION],
+        ],
+    ],
+    // if you add fields to this array, dont forget to update the export routine (ExportDataGenerator).
+    'journal_meta_fields'       => [
+        // sepa
+        'sepa_cc', 'sepa_ct_op', 'sepa_ct_id',
+        'sepa_db', 'sepa_country', 'sepa_ep',
+        'sepa_ci', 'sepa_batch_id', 'external_uri',
+
+        // dates
+        'interest_date', 'book_date', 'process_date',
+        'due_date', 'payment_date', 'invoice_date',
+
+        // others
+        'recurrence_id', 'internal_reference', 'bunq_payment_id',
+        'import_hash', 'import_hash_v2', 'external_id', 'original_source',
+
+        // recurring transactions
+        'recurrence_total', 'recurrence_count',
+    ],
+    'webhooks'                  => [
+        'max_attempts' => env('WEBHOOK_MAX_ATTEMPTS', 3),
+        'triggers'     => [
+            Webhook::TRIGGER_STORE_TRANSACTION   => 'TRIGGER_STORE_TRANSACTION',
+            Webhook::TRIGGER_UPDATE_TRANSACTION  => 'TRIGGER_UPDATE_TRANSACTION',
+            Webhook::TRIGGER_DESTROY_TRANSACTION => 'TRIGGER_DESTROY_TRANSACTION',
+        ],
+        'responses'    => [
+            Webhook::RESPONSE_TRANSACTIONS => 'RESPONSE_TRANSACTIONS',
+            Webhook::RESPONSE_ACCOUNTS     => 'RESPONSE_ACCOUNTS',
+            Webhook::RESPONSE_NONE         => 'RESPONSE_NONE',
+        ],
+        'deliveries'   => [
+            Webhook::DELIVERY_JSON => 'DELIVERY_JSON',
+        ],
+    ],
 ];

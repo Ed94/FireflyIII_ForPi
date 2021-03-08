@@ -24,7 +24,7 @@
                         </div>
                     </div>
 
-                    <div class="box-body table-responsive no-padding">
+                    <div class="box-body no-padding">
                         <div style="padding:8px;">
                             <a href="{{ route('recurring.create') }}" class="btn btn-success"><i class="fa fa-plus fa-fw"></i> {{ ('make_new_recurring')|_ }}
                             </a>
@@ -32,15 +32,16 @@
 
                         <!-- list of recurring here -->
                         <div style="padding-left:8px;">
-                            {{ paginator.render|raw }}
+                            {{ paginator.links('pagination.bootstrap-4')|raw }}
                         </div>
-                        <table class="table table-hover sortable">
+                        <table class="table table-responsive  table-hover sortable">
                             <thead>
                             <tr>
                                 <th class="hidden-sm hidden-xs" data-defaultsort="disabled">&nbsp;</th>
                                 <th data-defaultsign="az">{{ trans('list.title') }}</th>
-                                <th data-defaultsign="_19">{{ trans('list.transaction_s') }}</th>
+                                <th data-defaultsort="disabled">{{ trans('list.transaction_s') }}</th>
                                 <th data-defaultsort="disabled">{{ trans('list.repetitions') }}</th>
+                                <th data-defaultsign="month" data-dateformat="{{ madMomentJS }}">{{ trans('list.next_due') }}</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -49,15 +50,19 @@
                                     <td class="hidden-sm hidden-xs">
                                         <div class="btn-group btn-group-xs edit_tr_buttons">
                                             <a class="btn btn-default btn-xs" title="{{ 'edit'|_ }}" href="{{ route('recurring.edit',rt.id) }}"><i
-                                                        class="fa fa-fw fa-pencil"></i></a><a class="btn btn-danger btn-xs" title="{{ 'delete'|_ }}" href="{{ route('recurring.delete',rt.id) }}"><i
+                                                        class="fa fa-fw fa-pencil"></i></a><a class="btn btn-danger btn-xs" title="{{ 'delete'|_ }}"
+                                                                                              href="{{ route('recurring.delete',rt.id) }}"><i
                                                         class="fa fa-fw fa-trash-o"></i></a>
                                         </div>
                                     </td>
                                     <td data-value="{{ rt.title }}">
+                                        {% if rt.attachments > 0 %}
+                                            <i class="fa fa-fw fa-paperclip"></i>
+                                        {% endif %}
                                         {% if rt.active == false %}<s>{% endif %}
-                                        {{ rt.transaction_type|_ }}:
-                                        <a href="{{ route('recurring.show',rt.id) }}">{{ rt.title }}</a>
-                                        {% if rt.active == false %}</s> ({{ 'inactive'|_|lower }}){% endif %}
+                                            {{ rt.type|_ }}:
+                                            <a href="{{ route('recurring.show',rt.id) }}">{{ rt.title }}</a>
+                                            {% if rt.active == false %}</s> ({{ 'inactive'|_|lower }}){% endif %}
                                         {% if rt.description|length > 0 %}
                                             <small><br>{{ rt.description }}</small>
                                         {% endif %}
@@ -83,23 +88,28 @@
                                         </ol>
                                     </td>
                                     <td>
+                                        {% if null != rt.repeat_until and today > rt.repeat_until %}
+                                        <span class="text-danger">
+                                            {{ trans('firefly.repeat_until_in_past', {date: rt.repeat_until.formatLocalized(monthAndDayFormat) }) }}
+                                        </span>
+                                        {% endif %}
                                         <ul>
-                                            {% for rep in rt.recurrence_repetitions %}
+                                            {% for rep in rt.repetitions %}
                                                 <li>{{ rep.description }}
-                                                {% if rep.repetition_skip == 1 %}
-                                                    ({{ trans('firefly.recurring_skips_one')|lower }}).
-                                                {% endif %}
-                                                {% if rep.repetition_skip > 1 %}
-                                                    ({{ trans('firefly.recurring_skips_more', {count: rep.repetition_skip})|lower }}).
-                                                {% endif %}
+                                                    {% if rep.repetition_skip == 1 %}
+                                                        ({{ trans('firefly.recurring_skips_one')|lower }}).
+                                                    {% endif %}
+                                                    {% if rep.repetition_skip > 1 %}
+                                                        ({{ trans('firefly.recurring_skips_more', {count: rep.repetition_skip})|lower }}).
+                                                    {% endif %}
                                                     {% if rep.weekend == 3 %}
-                                                        {{ 'will_jump_friday'|_ }}
+                                                        <br>{{ 'will_jump_friday'|_ }}
                                                     {% endif %}
                                                     {% if rep.weekend == 4 %}
-                                                        {{ 'will_jump_monday'|_ }}
+                                                        <br>{{ 'will_jump_monday'|_ }}
                                                     {% endif %}
                                                     {% if rep.weekend == 2 %}
-                                                        {{ 'except_weekends'|_ }}
+                                                        <br>{{ 'except_weekends'|_ }}
                                                     {% endif %}
                                                 </li>
                                             {% endfor %}
@@ -111,18 +121,26 @@
                                             {% if null != rt.repeat_until and rt.repetitions == 0 %}
                                                 {{ trans('firefly.recurring_repeats_until', {date: rt.repeat_until.formatLocalized(monthAndDayFormat)}) }}.
                                             {% endif %}
-                                            {% if null == rt.repeat_until and rt.repetitions != 0 %}
-                                                {{ trans('firefly.recurring_repeats_x_times', {count: rt.repetitions}) }}.
+                                            {% if null == rt.repeat_until and rt.nr_of_repetitions != 0 %}
+                                                {{ trans_choice('firefly.recurring_repeats_x_times', rt.nr_of_repetitions) }}.
                                             {% endif %}
-
                                         </p>
+                                    </td>
+                                    <td>
+                                        <ul>
+                                            {% for rep in rt.repetitions %}
+                                                {% for occ in rep.occurrences %}
+                                                    <li>{{ occ.formatLocalized(monthAndDayFormat) }}</li>
+                                                {% endfor %}
+                                            {% endfor %}
+                                        </ul>
                                     </td>
                                 </tr>
                             {% endfor %}
                             </tbody>
                         </table>
                         <div style="padding-left:8px;">
-                            {{ paginator.render|raw }}
+                            {{ paginator.links('pagination.bootstrap-4')|raw }}
                         </div>
                     </div>
                     <div class="box-footer">
@@ -137,7 +155,7 @@
 
 
     {% if total == 0 and page == 1 %}
-        {% include 'partials.empty' with {what: 'default', type: 'recurring',route: route('recurring.create')} %}
+        {% include 'partials.empty' with {objectType: 'default', type: 'recurring',route: route('recurring.create')} %}
     {% endif %}
 {% endblock %}
 
@@ -146,5 +164,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script type="text/javascript" src="v1/js/lib/bootstrap-sortable.js?v={{ FF_VERSION }}"></script>
+    <script type="text/javascript" src="v1/js/lib/bootstrap-sortable.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
 {% endblock %}

@@ -1,22 +1,22 @@
 <?php
 /**
  * BillRepository.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -24,12 +24,15 @@ namespace FireflyIII\Repositories\Bill;
 
 use Carbon\Carbon;
 use DB;
+use FireflyIII\Exceptions\FireflyException;
 use FireflyIII\Factory\BillFactory;
+use FireflyIII\Models\Attachment;
 use FireflyIII\Models\Bill;
 use FireflyIII\Models\Note;
 use FireflyIII\Models\Transaction;
 use FireflyIII\Models\TransactionJournal;
 use FireflyIII\Repositories\Journal\JournalRepositoryInterface;
+use FireflyIII\Repositories\ObjectGroup\CreatesObjectGroups;
 use FireflyIII\Services\Internal\Destroy\BillDestroyService;
 use FireflyIII\Services\Internal\Update\BillUpdateService;
 use FireflyIII\Support\CacheProperties;
@@ -38,25 +41,17 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Log;
+use Storage;
 
 /**
  * Class BillRepository.
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+ *
  */
 class BillRepository implements BillRepositoryInterface
 {
-    /** @var User */
-    private $user;
+    use CreatesObjectGroups;
 
-    /**
-     * Constructor.
-     */
-    public function __construct()
-    {
-        if ('testing' === config('app.env')) {
-            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', \get_class($this)));
-        }
-    }
+    private User $user;
 
     /**
      * @param Bill $bill
@@ -87,6 +82,37 @@ class BillRepository implements BillRepositoryInterface
     }
 
     /**
+     * Find bill by parameters.
+     *
+     * @param int|null    $billId
+     * @param string|null $billName
+     *
+     * @return Bill|null
+     */
+    public function findBill(?int $billId, ?string $billName): ?Bill
+    {
+        if (null !== $billId) {
+            $searchResult = $this->find((int)$billId);
+            if (null !== $searchResult) {
+                Log::debug(sprintf('Found bill based on #%d, will return it.', $billId));
+
+                return $searchResult;
+            }
+        }
+        if (null !== $billName) {
+            $searchResult = $this->findByName((string)$billName);
+            if (null !== $searchResult) {
+                Log::debug(sprintf('Found bill based on "%s", will return it.', $billName));
+
+                return $searchResult;
+            }
+        }
+        Log::debug('Found nothing');
+
+        return null;
+    }
+
+    /**
      * Find a bill by name.
      *
      * @param string $name
@@ -96,6 +122,8 @@ class BillRepository implements BillRepositoryInterface
     public function findByName(string $name): ?Bill
     {
         $bills = $this->user->bills()->get(['bills.*']);
+
+        // TODO no longer need to loop like this
 
         /** @var Bill $bill */
         foreach ($bills as $bill) {
@@ -112,13 +140,10 @@ class BillRepository implements BillRepositoryInterface
      */
     public function getActiveBills(): Collection
     {
-        /** @var Collection $set */
-        $set = $this->user->bills()
+        return $this->user->bills()
                           ->where('active', 1)
-                          ->get(['bills.*', DB::raw('((bills.amount_min + bills.amount_max) / 2) AS expectedAmount'),])
-                          ->sortBy('name');
-
-        return $set;
+                          ->orderBy('bills.name', 'ASC')
+                          ->get(['bills.*', DB::raw('((bills.amount_min + bills.amount_max) / 2) AS expectedAmount'),]);
     }
 
     /**
@@ -130,7 +155,20 @@ class BillRepository implements BillRepositoryInterface
      */
     public function getAttachments(Bill $bill): Collection
     {
-        return $bill->attachments()->get();
+        $set = $bill->attachments()->get();
+
+        /** @var Storage $disk */
+        $disk = Storage::disk('upload');
+
+        return $set->each(
+            static function (Attachment $attachment) use ($disk) {
+                $notes                   = $attachment->notes()->first();
+                $attachment->file_exists = $disk->exists($attachment->fileName());
+                $attachment->notes       = $notes ? $notes->text : '';
+
+                return $attachment;
+            }
+        );
     }
 
     /**
@@ -139,17 +177,10 @@ class BillRepository implements BillRepositoryInterface
     public function getBills(): Collection
     {
         /** @var Collection $set */
-        $set = $this->user->bills()->orderBy('name', 'ASC')->get();
-
-        $set = $set->sortBy(
-            function (Bill $bill) {
-                $int = $bill->active ? 0 : 1;
-
-                return $int . strtolower($bill->name);
-            }
-        );
-
-        return $set;
+        return $this->user->bills()
+                          ->orderBy('order', 'ASC')
+                          ->orderBy('active', 'DESC')
+                          ->orderBy('name', 'ASC')->get();
     }
 
     /**
@@ -159,38 +190,29 @@ class BillRepository implements BillRepositoryInterface
      */
     public function getBillsForAccounts(Collection $accounts): Collection
     {
-        $fields = ['bills.id', 'bills.created_at', 'bills.updated_at', 'bills.deleted_at', 'bills.user_id', 'bills.name', 'bills.match', 'bills.amount_min',
-                   'bills.amount_max', 'bills.date', 'bills.transaction_currency_id', 'bills.repeat_freq', 'bills.skip', 'bills.automatch', 'bills.active',
-                   'bills.name_encrypted',
-                   'bills.match_encrypted',];
+        $fields = ['bills.id', 'bills.created_at', 'bills.updated_at', 'bills.deleted_at', 'bills.user_id', 'bills.name', 'bills.amount_min',
+                   'bills.amount_max', 'bills.date', 'bills.transaction_currency_id', 'bills.repeat_freq', 'bills.skip', 'bills.automatch', 'bills.active',];
         $ids    = $accounts->pluck('id')->toArray();
-        $set    = $this->user->bills()
-                             ->leftJoin(
-                                 'transaction_journals',
-                                 function (JoinClause $join) {
-                                     $join->on('transaction_journals.bill_id', '=', 'bills.id')->whereNull('transaction_journals.deleted_at');
-                                 }
-                             )
-                             ->leftJoin(
-                                 'transactions',
-                                 function (JoinClause $join) {
-                                     $join->on('transaction_journals.id', '=', 'transactions.transaction_journal_id')->where('transactions.amount', '<', 0);
-                                 }
-                             )
-                             ->whereIn('transactions.account_id', $ids)
-                             ->whereNull('transaction_journals.deleted_at')
-                             ->groupBy($fields)
-                             ->get($fields);
 
-        $set = $set->sortBy(
-            function (Bill $bill) {
-                $int = $bill->active ? 0 : 1;
-
-                return $int . strtolower($bill->name);
-            }
-        );
-
-        return $set;
+        return $this->user->bills()
+                          ->leftJoin(
+                              'transaction_journals',
+                              static function (JoinClause $join) {
+                                  $join->on('transaction_journals.bill_id', '=', 'bills.id')->whereNull('transaction_journals.deleted_at');
+                              }
+                          )
+                          ->leftJoin(
+                              'transactions',
+                              static function (JoinClause $join) {
+                                  $join->on('transaction_journals.id', '=', 'transactions.transaction_journal_id')->where('transactions.amount', '<', 0);
+                              }
+                          )
+                          ->whereIn('transactions.account_id', $ids)
+                          ->whereNull('transaction_journals.deleted_at')
+                          ->orderBy('bills.active', 'DESC')
+                          ->orderBy('bills.name', 'ASC')
+                          ->groupBy($fields)
+                          ->get($fields);
     }
 
     /**
@@ -351,26 +373,47 @@ class BillRepository implements BillRepositoryInterface
     /**
      * @param Bill $bill
      *
-     * @return string
+     * @return array
      */
-    public function getOverallAverage(Bill $bill): string
+    public function getOverallAverage(Bill $bill): array
     {
         /** @var JournalRepositoryInterface $repos */
         $repos = app(JournalRepositoryInterface::class);
         $repos->setUser($this->user);
+
+        // get and sort on currency
+        $result   = [];
         $journals = $bill->transactionJournals()->get();
-        $sum      = '0';
-        $count    = (string)$journals->count();
+
         /** @var TransactionJournal $journal */
         foreach ($journals as $journal) {
-            $sum = bcadd($sum, $repos->getJournalTotal($journal));
-        }
-        $avg = '0';
-        if ($journals->count() > 0) {
-            $avg = bcdiv($sum, $count);
+            /** @var Transaction $transaction */
+            $transaction                = $journal->transactions()->where('amount', '<', 0)->first();
+            $currencyId                 = (int)$journal->transaction_currency_id;
+            $currency                   = $journal->transactionCurrency;
+            $result[$currencyId]        = $result[$currencyId] ?? [
+                    'sum'                     => '0',
+                    'count'                   => 0,
+                    'avg'                     => '0',
+                    'currency_id'             => $currency->id,
+                    'currency_code'           => $currency->code,
+                    'currency_symbol'         => $currency->symbol,
+                    'currency_decimal_places' => $currency->decimal_places,
+                ];
+            $result[$currencyId]['sum'] = bcadd($result[$currencyId]['sum'], $transaction->amount);
+            $result[$currencyId]['count']++;
         }
 
-        return $avg;
+        // after loop, re-loop for avg.
+        /**
+         * @var int   $currencyId
+         * @var array $arr
+         */
+        foreach ($result as $currencyId => $arr) {
+            $result[$currencyId]['avg'] = bcdiv($arr['sum'], (string)$arr['count']);
+        }
+
+        return $result;
     }
 
     /**
@@ -380,7 +423,9 @@ class BillRepository implements BillRepositoryInterface
      */
     public function getPaginator(int $size): LengthAwarePaginator
     {
-        return $this->user->bills()->paginate($size);
+        return $this->user->bills()
+                          ->orderBy('active', 'DESC')
+                          ->orderBy('name', 'ASC')->paginate($size);
     }
 
     /**
@@ -394,13 +439,15 @@ class BillRepository implements BillRepositoryInterface
      */
     public function getPaidDatesInRange(Bill $bill, Carbon $start, Carbon $end): Collection
     {
-        $dates = $bill->transactionJournals()->before($end)->after($start)->get(
-            [
-                'transaction_journals.id', 'transaction_journals.date',
-            ]
-        )->pluck('date', 'id');
+        Log::debug('Now in getPaidDatesInRange()');
 
-        return $dates;
+        return $bill->transactionJournals()
+                    ->before($end)->after($start)->get(
+                [
+                    'transaction_journals.id', 'transaction_journals.date',
+                    'transaction_journals.transaction_group_id',
+                ]
+            );
     }
 
     /**
@@ -438,7 +485,7 @@ class BillRepository implements BillRepositoryInterface
             $currentStart = clone $nextExpectedMatch;
         }
         $simple = $set->each(
-            function (Carbon $date) {
+            static function (Carbon $date) {
                 return $date->format('Y-m-d');
             }
         );
@@ -496,43 +543,67 @@ class BillRepository implements BillRepositoryInterface
      * @param Bill   $bill
      * @param Carbon $date
      *
-     * @return string
+     * @return array
      */
-    public function getYearAverage(Bill $bill, Carbon $date): string
+    public function getYearAverage(Bill $bill, Carbon $date): array
     {
         /** @var JournalRepositoryInterface $repos */
         $repos = app(JournalRepositoryInterface::class);
         $repos->setUser($this->user);
 
+        // get and sort on currency
+        $result = [];
+
         $journals = $bill->transactionJournals()
                          ->where('date', '>=', $date->year . '-01-01 00:00:00')
                          ->where('date', '<=', $date->year . '-12-31 23:59:59')
                          ->get();
-        $sum      = '0';
-        $count    = (string)$journals->count();
+
         /** @var TransactionJournal $journal */
         foreach ($journals as $journal) {
-            $sum = bcadd($sum, $repos->getJournalTotal($journal));
-        }
-        $avg = '0';
-        if ($journals->count() > 0) {
-            $avg = bcdiv($sum, $count);
+            /** @var Transaction $transaction */
+            $transaction = $journal->transactions()->where('amount', '<', 0)->first();
+            if (null === $transaction) {
+                continue;
+            }
+            $currencyId                 = (int)$journal->transaction_currency_id;
+            $currency                   = $journal->transactionCurrency;
+            $result[$currencyId]        = $result[$currencyId] ?? [
+                    'sum'                     => '0',
+                    'count'                   => 0,
+                    'avg'                     => '0',
+                    'currency_id'             => $currency->id,
+                    'currency_code'           => $currency->code,
+                    'currency_symbol'         => $currency->symbol,
+                    'currency_decimal_places' => $currency->decimal_places,
+                ];
+            $result[$currencyId]['sum'] = bcadd($result[$currencyId]['sum'], $transaction->amount);
+            $result[$currencyId]['count']++;
         }
 
-        return $avg;
+        // after loop, re-loop for avg.
+        /**
+         * @var int   $currencyId
+         * @var array $arr
+         */
+        foreach ($result as $currencyId => $arr) {
+            $result[$currencyId]['avg'] = bcdiv($arr['sum'], (string)$arr['count']);
+        }
+
+        return $result;
     }
 
     /**
      * Link a set of journals to a bill.
      *
-     * @param Bill       $bill
-     * @param Collection $transactions
+     * @param Bill  $bill
+     * @param array $transactions
      */
-    public function linkCollectionToBill(Bill $bill, Collection $transactions): void
+    public function linkCollectionToBill(Bill $bill, array $transactions): void
     {
         /** @var Transaction $transaction */
         foreach ($transactions as $transaction) {
-            $journal          = $transaction->transactionJournal;
+            $journal          = $bill->user->transactionJournals()->find((int)$transaction['transaction_journal_id']);
             $journal->bill_id = $bill->id;
             $journal->save();
             Log::debug(sprintf('Linked journal #%d to bill #%d', $journal->id, $bill->id));
@@ -559,12 +630,9 @@ class BillRepository implements BillRepositoryInterface
         }
         // find the most recent date for this bill NOT in the future. Cache this date:
         $start = clone $bill->date;
-        Log::debug('nextDateMatch: Start is ' . $start->format('Y-m-d'));
 
         while ($start < $date) {
-            Log::debug(sprintf('$start (%s) < $date (%s)', $start->format('Y-m-d'), $date->format('Y-m-d')));
             $start = app('navigation')->addPeriod($start, $bill->repeat_freq, $bill->skip);
-            Log::debug('Start is now ' . $start->format('Y-m-d'));
         }
 
         $end = app('navigation')->addPeriod($start, $bill->repeat_freq, $bill->skip);
@@ -624,6 +692,19 @@ class BillRepository implements BillRepositoryInterface
     }
 
     /**
+     * @param string $query
+     * @param int    $limit
+     *
+     * @return Collection
+     */
+    public function searchBill(string $query, int $limit): Collection
+    {
+        $query = sprintf('%%%s%%', $query);
+
+        return $this->user->bills()->where('name', 'LIKE', $query)->take($limit)->get();
+    }
+
+    /**
      * @param User $user
      */
     public function setUser(User $user): void
@@ -634,9 +715,10 @@ class BillRepository implements BillRepositoryInterface
     /**
      * @param array $data
      *
-     * @return Bill|null
+     * @return Bill
+     * @throws FireflyException
      */
-    public function store(array $data): ?Bill
+    public function store(array $data): Bill
     {
         /** @var BillFactory $factory */
         $factory = app(BillFactory::class);
@@ -657,5 +739,69 @@ class BillRepository implements BillRepositoryInterface
         $service = app(BillUpdateService::class);
 
         return $service->update($bill, $data);
+    }
+
+    /**
+     * @param Bill $bill
+     */
+    public function unlinkAll(Bill $bill): void
+    {
+        $this->user->transactionJournals()->where('bill_id', $bill->id)->update(['bill_id' => null]);
+    }
+
+    /**
+     * Correct order of piggies in case of issues.
+     */
+    public function correctOrder(): void
+    {
+        $set     = $this->user->bills()->orderBy('order', 'ASC')->get();
+        $current = 1;
+        foreach ($set as $bill) {
+            if ((int)$bill->order !== $current) {
+                $bill->order = $current;
+                $bill->save();
+            }
+            $current++;
+        }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function setObjectGroup(Bill $bill, string $objectGroupTitle): Bill
+    {
+        $objectGroup = $this->findOrCreateObjectGroup($objectGroupTitle);
+        if (null !== $objectGroup) {
+            $bill->objectGroups()->sync([$objectGroup->id]);
+        }
+
+        return $bill;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function removeObjectGroup(Bill $bill): Bill
+    {
+        $bill->objectGroups()->sync([]);
+
+        return $bill;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function setOrder(Bill $bill, int $order): void
+    {
+        $bill->order = $order;
+        $bill->save();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function destroyAll(): void
+    {
+        $this->user->bills()->delete();
     }
 }

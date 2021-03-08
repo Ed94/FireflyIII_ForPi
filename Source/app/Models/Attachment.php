@@ -1,54 +1,81 @@
 <?php
 /**
  * Attachment.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Models;
 
 use Carbon\Carbon;
-use Crypt;
+use Eloquent;
 use FireflyIII\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Builder;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Class Attachment.
+ * FireflyIII\Models\Attachment
  *
- * @property int    $id
- * @property Carbon $created_at
- * @property Carbon $updated_at
+ * @property int $id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property int $user_id
+ * @property int $attachable_id
  * @property string $attachable_type
  * @property string $md5
  * @property string $filename
- * @property string $title
- * @property string $description
- * @property string $notes
+ * @property string|null $title
+ * @property string|null $description
  * @property string $mime
- * @property int    $size
- * @property User   $user
- * @property bool   $uploaded
- * @property bool   file_exists
+ * @property int $size
+ * @property bool $uploaded
+ * @property-read Model|\Eloquent $attachable
+ * @property-read Collection|\FireflyIII\Models\Note[] $notes
+ * @property-read int|null $notes_count
+ * @property-read User $user
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment newQuery()
+ * @method static Builder|Attachment onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment query()
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereAttachableId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereAttachableType($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereDescription($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereFilename($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereMd5($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereMime($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereSize($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereTitle($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereUploaded($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Attachment whereUserId($value)
+ * @method static Builder|Attachment withTrashed()
+ * @method static Builder|Attachment withoutTrashed()
+ * @mixin Eloquent
  */
 class Attachment extends Model
 {
@@ -74,13 +101,13 @@ class Attachment extends Model
      *
      * @param string $value
      *
-     * @return Attachment
      * @throws NotFoundHttpException
+     * @return Attachment
      */
     public static function routeBinder(string $value): Attachment
     {
         if (auth()->check()) {
-            $attachmentId = (int)$value;
+            $attachmentId = (int) $value;
             /** @var User $user */
             $user = auth()->user();
             /** @var Attachment $attachment */
@@ -112,71 +139,7 @@ class Attachment extends Model
      */
     public function fileName(): string
     {
-        return sprintf('at-%s.data', (string)$this->id);
-    }
-
-    /**
-     * @param $value
-     *
-     * @codeCoverageIgnore
-     * @return null|string
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
-     */
-    public function getDescriptionAttribute($value): ?string
-    {
-        if (null === $value || '' === $value) {
-            return null;
-        }
-
-        return Crypt::decrypt($value);
-    }
-
-    /**
-     * @param $value
-     *
-     * @codeCoverageIgnore
-     * @return null|string
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
-     */
-    public function getFilenameAttribute($value): ?string
-    {
-        if (null === $value || '' === $value) {
-            return null;
-        }
-
-        return Crypt::decrypt($value);
-    }
-
-    /**
-     * @param $value
-     *
-     * @codeCoverageIgnore
-     * @return null|string
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
-     */
-    public function getMimeAttribute($value): ?string
-    {
-        if (null === $value || '' === $value) {
-            return null;
-        }
-
-        return Crypt::decrypt($value);
-    }
-
-    /**
-     * @param $value
-     *
-     * @codeCoverageIgnore
-     * @return null|string
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
-     */
-    public function getTitleAttribute($value): ?string
-    {
-        if (null === $value || '' === $value) {
-            return null;
-        }
-
-        return Crypt::decrypt($value);
+        return sprintf('at-%s.data', (string) $this->id);
     }
 
     /**
@@ -186,57 +149,6 @@ class Attachment extends Model
     public function notes(): MorphMany
     {
         return $this->morphMany(Note::class, 'noteable');
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param string|null $value
-     */
-    public function setDescriptionAttribute(string $value = null): void
-    {
-        if (null !== $value) {
-            $this->attributes['description'] = Crypt::encrypt($value);
-        }
-
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param string $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setFilenameAttribute(string $value): void
-    {
-        $this->attributes['filename'] = Crypt::encrypt($value);
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param string $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setMimeAttribute(string $value): void
-    {
-        $this->attributes['mime'] = Crypt::encrypt($value);
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param string $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setTitleAttribute(string $value = null): void
-    {
-        if (null !== $value) {
-            $this->attributes['title'] = Crypt::encrypt($value);
-        }
     }
 
     /**

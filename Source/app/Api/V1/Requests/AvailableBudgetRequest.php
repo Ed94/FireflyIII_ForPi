@@ -1,43 +1,42 @@
 <?php
 /**
  * AvailableBudgetRequest.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 namespace FireflyIII\Api\V1\Requests;
 
+use FireflyIII\Support\Request\ChecksLogin;
+use FireflyIII\Support\Request\ConvertsDataTypes;
+use Illuminate\Foundation\Http\FormRequest;
+
 /**
  * Class AvailableBudgetRequest
+ *
+ * @codeCoverageIgnore
  */
-class AvailableBudgetRequest extends Request
+class AvailableBudgetRequest extends FormRequest
 {
-    /**
-     * Authorize logged in users.
-     *
-     * @return bool
-     */
-    public function authorize(): bool
-    {
-        // Only allow authenticated users
-        return auth()->check();
-    }
+    use ConvertsDataTypes, ChecksLogin;
+
+
 
     /**
      * Get all data from the request.
@@ -62,15 +61,13 @@ class AvailableBudgetRequest extends Request
      */
     public function rules(): array
     {
-        $rules = [
+        return [
             'currency_id'   => 'numeric|exists:transaction_currencies,id',
             'currency_code' => 'min:3|max:3|exists:transaction_currencies,code',
-            'amount'        => 'required|numeric|more:0',
+            'amount'        => 'required|numeric|gt:0',
             'start'         => 'required|date|before:end',
             'end'           => 'required|date|after:start',
         ];
-
-        return $rules;
     }
 
 

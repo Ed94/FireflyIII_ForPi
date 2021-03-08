@@ -1,22 +1,22 @@
 <?php
 /**
  * AttachmentController.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -41,6 +41,8 @@ class AttachmentController extends Controller
 
     /**
      * AttachmentController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -50,7 +52,7 @@ class AttachmentController extends Controller
         $this->middleware(
             function ($request, $next) {
                 app('view')->share('mainTitleIcon', 'fa-paperclip');
-                app('view')->share('title', (string)trans('firefly.attachments'));
+                app('view')->share('title', (string) trans('firefly.attachments'));
                 $this->repository = app(AttachmentRepositoryInterface::class);
 
                 return $next($request);
@@ -67,7 +69,7 @@ class AttachmentController extends Controller
      */
     public function delete(Attachment $attachment)
     {
-        $subTitle = (string)trans('firefly.delete_attachment', ['name' => $attachment->filename]);
+        $subTitle = (string) trans('firefly.delete_attachment', ['name' => $attachment->filename]);
 
         // put previous url in session
         $this->rememberPreviousUri('attachments.delete.uri');
@@ -89,7 +91,7 @@ class AttachmentController extends Controller
 
         $this->repository->destroy($attachment);
 
-        $request->session()->flash('success', (string)trans('firefly.attachment_deleted', ['name' => $name]));
+        $request->session()->flash('success', (string) trans('firefly.attachment_deleted', ['name' => $name]));
         app('preferences')->mark();
 
         return redirect($this->getPreviousUri('attachments.delete.uri'));
@@ -100,9 +102,9 @@ class AttachmentController extends Controller
      *
      * @param Attachment $attachment
      *
+     * @throws FireflyException
      * @return mixed
      *
-     * @throws FireflyException
      */
     public function download(Attachment $attachment)
     {
@@ -111,7 +113,7 @@ class AttachmentController extends Controller
             $quoted  = sprintf('"%s"', addcslashes(basename($attachment->filename), '"\\'));
 
             /** @var LaravelResponse $response */
-            $response = response($content, 200);
+            $response = response($content);
             $response
                 ->header('Content-Description', 'File Transfer')
                 ->header('Content-Type', 'application/octet-stream')
@@ -121,7 +123,7 @@ class AttachmentController extends Controller
                 ->header('Expires', '0')
                 ->header('Cache-Control', 'must-revalidate, post-check=0, pre-check=0')
                 ->header('Pragma', 'public')
-                ->header('Content-Length', \strlen($content));
+                ->header('Content-Length', strlen($content));
 
             return $response;
         }
@@ -139,7 +141,7 @@ class AttachmentController extends Controller
     public function edit(Request $request, Attachment $attachment)
     {
         $subTitleIcon = 'fa-pencil';
-        $subTitle     = (string)trans('firefly.edit_attachment', ['name' => $attachment->filename]);
+        $subTitle     = (string) trans('firefly.edit_attachment', ['name' => $attachment->filename]);
 
         // put previous url in session if not redirect from store (not "return_to_edit").
         if (true !== session('attachments.edit.fromUpdate')) {
@@ -187,11 +189,11 @@ class AttachmentController extends Controller
         $data = $request->getAttachmentData();
         $this->repository->update($attachment, $data);
 
-        $request->session()->flash('success', (string)trans('firefly.attachment_updated', ['name' => $attachment->filename]));
+        $request->session()->flash('success', (string) trans('firefly.attachment_updated', ['name' => $attachment->filename]));
         app('preferences')->mark();
 
         $redirect = redirect($this->getPreviousUri('attachments.edit.uri'));
-        if (1 === (int)$request->get('return_to_edit')) {
+        if (1 === (int) $request->get('return_to_edit')) {
             // @codeCoverageIgnoreStart
             $request->session()->put('attachments.edit.fromUpdate', true);
 
@@ -208,19 +210,35 @@ class AttachmentController extends Controller
      *
      * @param Attachment $attachment
      *
-     * @return LaravelResponse
      * @throws FireflyException
+     * @return LaravelResponse
      */
-    public function view(Attachment $attachment): LaravelResponse
+    public function view(Request $request, Attachment $attachment): LaravelResponse
     {
         if ($this->repository->exists($attachment)) {
             $content = $this->repository->getContent($attachment);
 
+            // prevent XSS by adding a new secure header.
+            $csp = [
+                "default-src 'none'",
+                "object-src 'none'",
+                "script-src 'none'",
+                "style-src 'self' 'unsafe-inline'",
+                "base-uri 'none'",
+                "font-src 'none'",
+                "connect-src 'none'",
+                "img-src 'self'",
+                "manifest-src 'none'",
+            ];
+
             return response()->make(
-                $content, 200, [
-                            'Content-Type'        => $attachment->mime,
-                            'Content-Disposition' => 'inline; filename="' . $attachment->filename . '"',
-                        ]
+                $content,
+                200,
+                [
+                    'Content-Security-Policy' => implode('; ', $csp),
+                    'Content-Type'            => $attachment->mime,
+                    'Content-Disposition'     => 'inline; filename="' . $attachment->filename . '"',
+                ]
             );
         }
         throw new FireflyException('Could not find the indicated attachment. The file is no longer there.');

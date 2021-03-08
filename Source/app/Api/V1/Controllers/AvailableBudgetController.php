@@ -1,22 +1,22 @@
 <?php
 /**
  * AvailableBudgetController.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -24,37 +24,29 @@ declare(strict_types=1);
 namespace FireflyIII\Api\V1\Controllers;
 
 use FireflyIII\Api\V1\Requests\AvailableBudgetRequest;
-use FireflyIII\Exceptions\FireflyException;
 use FireflyIII\Factory\TransactionCurrencyFactory;
 use FireflyIII\Models\AvailableBudget;
 use FireflyIII\Models\TransactionCurrency;
-use FireflyIII\Repositories\Budget\BudgetRepositoryInterface;
-use FireflyIII\Repositories\Currency\CurrencyRepositoryInterface;
+use FireflyIII\Repositories\Budget\AvailableBudgetRepositoryInterface;
 use FireflyIII\Transformers\AvailableBudgetTransformer;
 use FireflyIII\User;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use League\Fractal\Manager;
 use League\Fractal\Pagination\IlluminatePaginatorAdapter;
 use League\Fractal\Resource\Collection as FractalCollection;
 use League\Fractal\Resource\Item;
-use League\Fractal\Serializer\JsonApiSerializer;
 
 /**
  * Class AvailableBudgetController.
- *
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class AvailableBudgetController extends Controller
 {
-    /** @var CurrencyRepositoryInterface The currency repository */
-    private $currencyRepository;
-    /** @var BudgetRepositoryInterface The budget repository */
-    private $repository;
+    private AvailableBudgetRepositoryInterface $abRepository;
 
     /**
-     * AccountController constructor.
+     * AvailableBudgetController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -62,10 +54,9 @@ class AvailableBudgetController extends Controller
         $this->middleware(
             function ($request, $next) {
                 /** @var User $user */
-                $user                     = auth()->user();
-                $this->repository         = app(BudgetRepositoryInterface::class);
-                $this->currencyRepository = app(CurrencyRepositoryInterface::class);
-                $this->repository->setUser($user);
+                $user               = auth()->user();
+                $this->abRepository = app(AvailableBudgetRepositoryInterface::class);
+                $this->abRepository->setUser($user);
 
                 return $next($request);
             }
@@ -77,11 +68,13 @@ class AvailableBudgetController extends Controller
      *
      * @param AvailableBudget $availableBudget
      *
+     * @codeCoverageIgnore
+     *
      * @return JsonResponse
      */
     public function delete(AvailableBudget $availableBudget): JsonResponse
     {
-        $this->repository->destroyAvailableBudget($availableBudget);
+        $this->abRepository->destroyAvailableBudget($availableBudget);
 
         return response()->json([], 204);
     }
@@ -89,30 +82,27 @@ class AvailableBudgetController extends Controller
     /**
      * Display a listing of the resource.
      *
-     * @param Request $request
-     *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        // create some objects:
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
+        $manager = $this->getManager();
 
         // types to get, page size:
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+
+        $start = $this->parameters->get('start');
+        $end   = $this->parameters->get('end');
 
         // get list of available budgets. Count it and split it.
-        $collection       = $this->repository->getAvailableBudgets();
+        $collection       = $this->abRepository->getAvailableBudgetsByDate($start, $end);
         $count            = $collection->count();
         $availableBudgets = $collection->slice(($this->parameters->get('page') - 1) * $pageSize, $pageSize);
 
         // make paginator:
         $paginator = new LengthAwarePaginator($availableBudgets, $count, $pageSize, $this->parameters->get('page'));
         $paginator->setPath(route('api.v1.available_budgets.index') . $this->buildParams());
-
-        // present to user.
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
 
         /** @var AvailableBudgetTransformer $transformer */
         $transformer = app(AvailableBudgetTransformer::class);
@@ -121,22 +111,20 @@ class AvailableBudgetController extends Controller
         $resource = new FractalCollection($availableBudgets, $transformer, 'available_budgets');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
      * Display the specified resource.
      *
-     * @param Request          $request
-     * @param  AvailableBudget $availableBudget
+     * @param AvailableBudget $availableBudget
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function show(Request $request, AvailableBudget $availableBudget): JsonResponse
+    public function show(AvailableBudget $availableBudget): JsonResponse
     {
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager = $this->getManager();
 
         /** @var AvailableBudgetTransformer $transformer */
         $transformer = app(AvailableBudgetTransformer::class);
@@ -144,7 +132,7 @@ class AvailableBudgetController extends Controller
 
         $resource = new Item($availableBudget, $transformer, 'available_budgets');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
@@ -153,11 +141,13 @@ class AvailableBudgetController extends Controller
      * @param AvailableBudgetRequest $request
      *
      * @return JsonResponse
-     * @throws FireflyException
      */
     public function store(AvailableBudgetRequest $request): JsonResponse
     {
         $data = $request->getAll();
+        $data['start']->startOfDay();
+        $data['end']->endOfDay();
+
         /** @var TransactionCurrencyFactory $factory */
         $factory  = app(TransactionCurrencyFactory::class);
         $currency = $factory->find($data['currency_id'], $data['currency_code']);
@@ -165,10 +155,9 @@ class AvailableBudgetController extends Controller
         if (null === $currency) {
             $currency = app('amount')->getDefaultCurrency();
         }
-        $availableBudget = $this->repository->setAvailableBudget($currency, $data['start'], $data['end'], $data['amount']);
-        $manager         = new Manager;
-        $baseUrl         = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $data['currency'] = $currency;
+        $availableBudget  = $this->abRepository->store($data);
+        $manager          = $this->getManager();
 
         /** @var AvailableBudgetTransformer $transformer */
         $transformer = app(AvailableBudgetTransformer::class);
@@ -176,7 +165,7 @@ class AvailableBudgetController extends Controller
 
         $resource = new Item($availableBudget, $transformer, 'available_budgets');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
 
@@ -207,10 +196,8 @@ class AvailableBudgetController extends Controller
         $data['currency_id'] = $currency->id;
 
 
-        $this->repository->updateAvailableBudget($availableBudget, $data);
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $this->abRepository->updateAvailableBudget($availableBudget, $data);
+        $manager = $this->getManager();
 
         /** @var AvailableBudgetTransformer $transformer */
         $transformer = app(AvailableBudgetTransformer::class);
@@ -218,7 +205,7 @@ class AvailableBudgetController extends Controller
 
         $resource = new Item($availableBudget, $transformer, 'available_budgets');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 }

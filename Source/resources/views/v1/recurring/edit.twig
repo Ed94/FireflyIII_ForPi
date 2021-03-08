@@ -20,11 +20,11 @@
                         {{ ExpandedForm.text('title') }}
                         {{ ExpandedForm.date('first_date',array.first_date, {helpText: trans('firefly.help_first_date_no_past')}) }}
                         {{ ExpandedForm.select('repetition_type', [], null, {helpText: trans('firefly.change_date_other_options')}) }}
-                        {{ ExpandedForm.number('skip', array.recurrence_repetitions[0].repetition_skip) }}
-                        {{ ExpandedForm.select('weekend', weekendResponses, array.recurrence_repetitions[0].weekend, {helpText: trans('firefly.help_weekend')}) }}
+                        {{ ExpandedForm.number('skip', array.repetitions[0].skip) }}
+                        {{ ExpandedForm.select('weekend', weekendResponses, array.repetitions[0].weekend, {helpText: trans('firefly.help_weekend')}) }}
                         {{ ExpandedForm.select('repetition_end', repetitionEnds, repetitionEnd) }}
                         {{ ExpandedForm.date('repeat_until',array.repeat_until) }}
-                        {{ ExpandedForm.number('repetitions', array.repetitions) }}
+                        {{ ExpandedForm.number('repetitions', array.nr_of_repetitions) }}
 
                         {# calendar in popup #}
                         <div class="form-group" id="calendar_holder">
@@ -52,6 +52,7 @@
                         {# only correct way to do active checkbox #}
                         {{ ExpandedForm.checkbox('active', 1, preFilled.active) }}
                         {{ ExpandedForm.checkbox('apply_rules', 1, preFilled.apply_rules) }}
+                        {{ ExpandedForm.file('attachments[]', {'multiple': 'multiple','helpText': trans('firefly.upload_max_file_size', {'size': uploadSize|filesize}) }) }}
                     </div>
                 </div>
             </div>
@@ -84,20 +85,20 @@
                         {# end of three buttons#}
                         {{ ExpandedForm.text('transaction_description', array.transactions[0].description) }}
                         {# transaction information (mandatory) #}
-                        {{ ExpandedForm.currencyList('transaction_currency_id', array.transactions[0].currency_id) }}
+                        {{ CurrencyForm.currencyList('transaction_currency_id', array.transactions[0].currency_id) }}
                         {{ ExpandedForm.amountNoCurrency('amount', array.transactions[0].amount) }}
 
                         {# source account if withdrawal, or if transfer: #}
-                        {{ ExpandedForm.longAccountList('source_id', array.transactions[0].source_id, {label: trans('form.asset_source_account')}) }}
+                        {{ AccountForm.longAccountList('source_id', array.transactions[0].source_id, {label: trans('form.asset_source_account')}) }}
 
-                        {# source account name for deposits: #}
-                        {{ ExpandedForm.text('source_name', array.transactions[0].source_name, {label: trans('form.revenue_account')}) }}
+                        {# NEW for deposits, a drop down with revenue accounts, loan debt cash and mortgage #}
+                        {{ AccountForm.activeDepositDestinations('deposit_source_id', preFilled.deposit_source_id, {label: trans('form.deposit_source_id')}) }}
 
                         {# destination if deposit or transfer: #}
-                        {{ ExpandedForm.longAccountList('destination_id', array.transactions[0].destination_id, {label: trans('form.asset_destination_account')} ) }}
+                        {{ AccountForm.longAccountList('destination_id', array.transactions[0].destination_id, {label: trans('form.asset_destination_account')} ) }}
 
-                        {# destination account name for withdrawals #}
-                        {{ ExpandedForm.text('destination_name', array.transactions[0].destination_name, {label: trans('form.expense_account')}) }}
+                        {# NEW for withdrawals, also a drop down with expense accounts, loans, debts, mortgages or (cash). #}
+                        {{ AccountForm.activeWithdrawalDestinations('withdrawal_destination_id', preFilled.withdrawal_destination_id, {label: trans('form.withdrawal_destination_id')}) }}
                     </div>
                 </div>
             </div>
@@ -110,54 +111,33 @@
                     </div>
                     <div class="box-body">
                         {# transaction information (optional) #}
-                        {{ ExpandedForm.currencyListEmpty('foreign_currency_id', array.transactions[0].foreign_currency_id) }}
+                        {{ CurrencyForm.currencyListEmpty('foreign_currency_id', array.transactions[0].foreign_currency_id) }}
                         {{ ExpandedForm.amountNoCurrency('foreign_amount', array.transactions[0].foreign_amount) }}
 
                         {# BUDGET ONLY WHEN CREATING A WITHDRAWAL #}
-                        {% set budgetId = 0 %}
-                        {% set categoryName = '' %}
-                        {% for metaValue in array.transactions[0].meta %}
-                            {% if metaValue.name == 'budget_id' %}
-                                {% set budgetId = metaValue.value %}
-                            {% endif %}
-                            {% if metaValue.name == 'category_name' %}
-                                {% set categoryName = metaValue.value %}
-                            {% endif %}
-                        {% endfor %}
-
                         {% if budgets|length > 1 %}
-                            {{ ExpandedForm.select('budget_id', budgets, budgetId) }} {##}
+                            {{ ExpandedForm.select('budget_id', budgets, array.transactions[0].budget_id) }}
                         {% else %}
-                            {{ ExpandedForm.select('budget_id', budgets, budgetId, {helpText: trans('firefly.no_budget_pointer', {link: route('budgets.index')})}) }}
+                            {{ ExpandedForm.select('budget_id', budgets, array.transactions[0].budget_id, {helpText: trans('firefly.no_budget_pointer', {link: route('budgets.index')})}) }}
                             {#budgets#}
                         {% endif %}
 
                         {# CATEGORY ALWAYS #}
-                        {{ ExpandedForm.text('category',categoryName) }}
+                        {{ ExpandedForm.text('category',array.transactions[0].category_name) }}
 
                         {# TAGS #}
-                        {% set tags = '' %}
-                        {% set piggyBankId = 0 %}
-                        {% for metaValue in array.meta %}
-                            {% if metaValue.name == 'tags' %}
-                                {% set tags = metaValue.value %}
-                            {% endif %}
-                            {% if metaValue.name == 'piggy_bank_id' %}
-                                {% set piggyBankId = metaValue.value %}
-                            {% endif %}
-                        {% endfor %}
-                        {{ ExpandedForm.text('tags', tags) }}
+                        {{ ExpandedForm.text('tags', array.transactions[0].tags) }}
 
                         {# RELATE THIS TRANSFER TO A PIGGY BANK #}
-                        {{ ExpandedForm.piggyBankList('piggy_bank_id',piggyBankId) }}
+                        {{ PiggyBankForm.piggyBankList('piggy_bank_id',array.transactions[0].piggy_bank_id) }}
                     </div>
                 </div>
             </div>
         </div>
 
         {# row with submit stuff. #}
-        <div class="row">
-            <div class="col-lg-6 col-md-6 col-sm-12 col-lg-offset-6 lg-md-offset-6">
+    <div class="row">
+        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
                 <div class="box">
                     <div class="box-header with-border">
                         <h3 class="box-title">{{ 'options'|_ }}</h3>
@@ -194,7 +174,7 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h4 class="modal-title">Calendar view yay</h4>
+                <h4 class="modal-title">{{ 'recurring_calendar_view'|_ }}</h4>
             </div>
             <div class="modal-body">
                 <div id="recurring_calendar" style="max-width: 400px;margin: 0 auto;">
@@ -214,19 +194,19 @@
 
 {% endblock %}
 {% block scripts %}
-    <script type="text/javascript" src="v1/js/lib/modernizr-custom.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/typeahead/typeahead.bundle.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/ff/common/autocomplete.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/bootstrap-tagsinput.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/jquery-ui.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript" src="v1/js/lib/fc/fullcalendar.min.js?v={{ FF_VERSION }}"></script>
-    <script type="text/javascript">
+    <script type="text/javascript" src="v1/js/lib/modernizr-custom.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/lib/typeahead/typeahead.bundle.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/ff/common/autocomplete.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/lib/bootstrap-tagsinput.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/js/lib/jquery-ui.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" src="v1/lib/fc/fullcalendar.min.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
+    <script type="text/javascript" nonce="{{ JS_NONCE }}">
         var transactionType = "{{ preFilled.transaction_type }}";
         var suggestUri = "{{ route('recurring.suggest') }}";
         var eventsUri = "{{ route('recurring.events') }}";
         var currentRepType = "{{ currentRepType }}";
     </script>
-    <script type="text/javascript" src="v1/js/ff/recurring/edit.js?v={{ FF_VERSION }}"></script>
+    <script type="text/javascript" src="v1/js/ff/recurring/edit.js?v={{ FF_VERSION }}" nonce="{{ JS_NONCE }}"></script>
 {% endblock %}
 
 {% block styles %}

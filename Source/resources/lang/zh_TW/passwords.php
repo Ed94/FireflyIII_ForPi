@@ -2,31 +2,31 @@
 
 /**
  * passwords.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 return [
-    'password' => '密碼至少需要六個字元，並與確認欄中的密碼相同。',
-    'user'     => '我們找不到使用該電郵地址的用戶。',
-    'token'    => '該密碼重置碼已經失效。',
-    'sent'     => '我們已經將密碼重置連結發送至您的電郵！',
-    'reset'    => '你的密碼已經被重置！',
-    'blocked'  => '很好的嘗試。',
+    'password' => '密碼至少需要 6 個字元，並重複輸入一次確認。',
+    'user'     => '找不到使用該電子郵件地址的使用者。',
+    'token'    => '此密碼重設碼已失效。',
+    'sent'     => '密碼重設連結已寄送到您的電子郵件地址！',
+    'reset'    => '您的密碼已重設！',
+    'blocked'  => '算是試過運氣了。',
 ];

@@ -2,78 +2,85 @@
 
 /**
  * intro.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 return [
     // index
-    'index_intro'                           => 'Wilkommen auf der Startseite von Firefly III. Bitte nehmen Sie sich die Zeit, um ein Gefühl dafür zu bekommen, wie Firefly III funktioniert.',
-    'index_accounts-chart'                  => 'Dieses Diagramm zeigt den aktuellen Saldo Ihrer Bestandskonten. Sie können die anzuzeigenden Konten in Ihren Einstellungen auswählen.',
-    'index_box_out_holder'                  => 'Diese kleine und deren benachbarten Boxen geben Ihnen einen schnellen Überblick über Ihre finanzielle Situation.',
-    'index_help'                            => 'Wenn Sie jemals Hilfe bei einer Seite oder einem Formular benötigen, drücken Sie diese Taste.',
-    'index_outro'                           => 'Die meisten Seiten von Firefly III werden mit einer kleinen Tour wie dieser beginnen. Bitte kontaktieren Sie mich, wenn Sie Fragen oder Kommentare haben. Viel Spaß!',
-    'index_sidebar-toggle'                  => 'Um neue Transaktionen, Konten oder andere Dinge zu erstellen, verwenden Sie das Menü unter diesem Symbol.',
+    'index_intro'                                     => 'Wilkommen auf der Startseite von Firefly III. Bitte nehmen Sie sich die Zeit, um ein Gefühl dafür zu bekommen, wie Firefly III funktioniert.',
+    'index_accounts-chart'                            => 'Dieses Diagramm zeigt den aktuellen Saldo Ihrer Bestandskonten. Sie können die anzuzeigenden Konten in Ihren Einstellungen auswählen.',
+    'index_box_out_holder'                            => 'Diese kleine und ihre benachbarten Boxen geben Ihnen einen schnellen Überblick über Ihre finanzielle Situation.',
+    'index_help'                                      => 'Wenn Sie jemals Hilfe bei einer Seite oder einem Formular benötigen, drücken Sie diese Taste.',
+    'index_outro'                                     => 'Die meisten Seiten von Firefly III werden mit einer kleinen Tour wie dieser beginnen. Bitte kontaktieren Sie mich, wenn Sie Fragen oder Kommentare haben. Viel Spaß!',
+    'index_sidebar-toggle'                            => 'Um neue Transaktionen, Konten oder andere Dinge zu erstellen, verwenden Sie das Menü unter diesem Symbol.',
+    'index_cash_account'                              => 'Dies sind die bisher angelegten Konten. Sie können das Geldkonto verwenden, um die Barausgaben zu verfolgen, aber es ist natürlich nicht zwingend erforderlich.',
+
+    // transactions
+    'transactions_create_basic_info'                  => 'Geben Sie die wesentlichen Informationen zu Ihrer Buchung ein. Quelle, Ziel, Datum und Beschreibung.',
+    'transactions_create_amount_info'                 => 'Geben Sie den Betrag der Buchung ein. Falls erforderlich, werden die Felder für Auslandsbetragsinformationen automatisch aktualisiert.',
+    'transactions_create_optional_info'               => 'Alle diese Felder sind optional. Wenn Sie hier zusätzlich Informationen eingeben, werden Ihre Buchungen besser organisiert.',
+    'transactions_create_split'                       => 'Wenn Sie eine Buchung aufteilen möchten, fügen Sie mit dieser Schaltfläche weitere Aufteilungen hinzu',
 
     // create account:
-    'accounts_create_iban'                  => 'Geben Sie Ihren Konten eine gültige IBAN. Dies könnte einen Datenimport in Zukunft sehr einfach machen.',
-    'accounts_create_asset_opening_balance' => 'Bestandskonten können eine "Eröffnungsbilanz" haben, welche den Beginn des Verlaufs dieses Kontos in Firefly III angibt.',
-    'accounts_create_asset_currency'        => 'Firefly III unterstützt mehrere Währungen. Bestandskonten ist eine Hauptwährung zugeordnet, die Sie hier festlegen müssen.',
-    'accounts_create_asset_virtual'         => 'Es kann manchmal helfen, Ihrem Konto ein virtuelles Gleichgewicht zu geben: eine zusätzliche Menge, die dem tatsächlichen Kontostand immer hinzugefügt oder daraus entfernt wird.',
+    'accounts_create_iban'                            => 'Geben Sie Ihren Konten eine gültige IBAN. Dies könnte einen Datenimport in Zukunft sehr einfach machen.',
+    'accounts_create_asset_opening_balance'           => 'Bestandskonten können eine "Eröffnungsbilanz" haben, welche den Beginn des Verlaufs dieses Kontos in Firefly III angibt.',
+    'accounts_create_asset_currency'                  => 'Firefly III unterstützt mehrere Währungen. Bestandskonten ist eine Hauptwährung zugeordnet, die Sie hier festlegen müssen.',
+    'accounts_create_asset_virtual'                   => 'Es kann manchmal helfen, Ihrem Konto ein virtuelles Gleichgewicht zu geben: eine zusätzliche Menge, die dem tatsächlichen Kontostand immer hinzugefügt oder daraus entfernt wird.',
 
     // budgets index
-    'budgets_index_intro'                   => 'Kostenrahmen werden zur Verwaltung Ihrer Finanzen verwendet und bilden eine der Kernfunktionen von Firefly III.',
-    'budgets_index_set_budget'              => 'Stellen Sie Ihr Gesamthaushaltsplan für jeden Zeitraum so ein, dass Firefly III Ihnen mitteilen kann, ob Sie alle verfügbaren Gelder vorgesehen haben.',
-    'budgets_index_see_expenses_bar'        => 'Dieser Balken wird sich langsam füllen, wenn Sie Geld ausgeben.',
-    'budgets_index_navigate_periods'        => 'Navigieren Sie durch Zeitabschnitte, um Kostenrahmen im Voraus festzulegen.',
-    'budgets_index_new_budget'              => 'Erstellen Sie neue Budgets nach Ihren Wünschen.',
-    'budgets_index_list_of_budgets'         => 'Verwenden Sie diese Tabelle, um die Beträge für jeden Kostenrahmen festzulegen und einen Überblick zu erhalten.',
-    'budgets_index_outro'                   => 'Um mehr über die Finanzplanung zu erfahren, klicken Sie auf das Hilfesymbol in der oberen rechten Ecke.',
+    'budgets_index_intro'                             => 'Budgets werden zur Verwaltung Ihrer Finanzen verwendet und bilden eine der Kernfunktionen von Firefly III.',
+    'budgets_index_set_budget'                        => 'Stellen Sie Ihr Gesamt-Budget für jeden Zeitraum so ein, dass Firefly III Ihnen mitteilen kann, ob Sie alle verfügbaren Gelder einem Budget zugeordnet haben.',
+    'budgets_index_see_expenses_bar'                  => 'Dieser Balken wird sich langsam füllen, wenn Sie Geld ausgeben.',
+    'budgets_index_navigate_periods'                  => 'Navigieren Sie durch Zeitabschnitte, um Budgets im Voraus festzulegen.',
+    'budgets_index_new_budget'                        => 'Erstellen Sie neue Budgets nach Ihren Wünschen.',
+    'budgets_index_list_of_budgets'                   => 'Verwenden Sie diese Tabelle, um die Beträge für jedes Budget festzulegen und einen Überblick zu erhalten.',
+    'budgets_index_outro'                             => 'Um mehr über die Finanzplanung zu erfahren, klicken Sie auf das Hilfesymbol in der oberen rechten Ecke.',
 
     // reports (index)
-    'reports_index_intro'                   => 'Verwenden Sie diese Reports, um detaillierte Einblicke in Ihre Finanzen zu erhalten.',
-    'reports_index_inputReportType'         => 'Wählen Sie einen Berichtstyp aus. Sehen Sie sich die Hilfeseiten an, um zu sehen, was jeder Bericht Ihnen zeigt.',
-    'reports_index_inputAccountsSelect'     => 'Sie können Bestandskonten ausschließen oder einbeziehen, wie Sie es für richtig halten.',
-    'reports_index_inputDateRange'          => 'Der gewählte Datumsbereich liegt ganz bei Ihnen: von einem Tag bis 10 Jahre.',
-    'reports_index_extra-options-box'       => 'Abhängig von dem ausgewählten Bericht können Sie hier zusätzliche Filter und Optionen auswählen. Sehen Sie sich dieses Feld an, wenn Sie Berichtstypen ändern.',
+    'reports_index_intro'                             => 'Verwenden Sie diese Reports, um detaillierte Einblicke in Ihre Finanzen zu erhalten.',
+    'reports_index_inputReportType'                   => 'Wählen Sie einen Berichtstyp aus. Sehen Sie sich die Hilfeseiten an, um zu sehen, was jeder Bericht Ihnen zeigt.',
+    'reports_index_inputAccountsSelect'               => 'Sie können Bestandskonten ausschließen oder einbeziehen, wie Sie es für richtig halten.',
+    'reports_index_inputDateRange'                    => 'Der gewählte Datumsbereich liegt ganz bei Ihnen: von einem Tag bis 10 Jahre.',
+    'reports_index_extra-options-box'                 => 'Abhängig von dem ausgewählten Bericht können Sie hier zusätzliche Filter und Optionen auswählen. Sehen Sie sich dieses Feld an, wenn Sie Berichtstypen ändern.',
 
     // reports (reports)
-    'reports_report_default_intro'          => 'Dieser Bericht gibt Ihnen einen schnellen und umfassenden Überblick über Ihre Finanzen. Wenn Sie etwas anderes sehen möchten, kontaktieren Sie mich bitte nicht!',
-    'reports_report_audit_intro'            => 'In diesem Bericht erhalten Sie detaillierte Einblicke in Ihre Bestandskonten.',
-    'reports_report_audit_optionsBox'       => 'Verwenden Sie diese Kontrollkästchen, um die Spalten anzuzeigen oder auszublenden, an denen Sie interessiert sind.',
+    'reports_report_default_intro'                    => 'Dieser Bericht gibt Ihnen einen schnellen und umfassenden Überblick über Ihre Finanzen. Kontaktieren Sie mich bitte, wenn Sie Ideen für Ergänzungen haben!',
+    'reports_report_audit_intro'                      => 'In diesem Bericht erhalten Sie detaillierte Einblicke in Ihre Bestandskonten.',
+    'reports_report_audit_optionsBox'                 => 'Verwenden Sie diese Kontrollkästchen, um die Spalten anzuzeigen oder auszublenden, an denen Sie interessiert sind.',
 
     'reports_report_category_intro'                  => 'Dieser Bericht gibt Ihnen Einblick in eine oder mehrere Kategorien.',
     'reports_report_category_pieCharts'              => 'Diese Diagramme geben Ihnen Einblick in Ausgaben und Einnahmen pro Kategorie oder pro Konto.',
     'reports_report_category_incomeAndExpensesChart' => 'Diese Tabelle zeigt Ihre Ausgaben und Einnahmen pro Kategorie.',
 
     'reports_report_tag_intro'                  => 'Dieser Bericht gibt Ihnen Einblick in eine oder mehrere Schlagwörter.',
-    'reports_report_tag_pieCharts'              => 'Diese Diagramme geben Ihnen Einblick in Ausgaben und Einnahmen ja Schlagwort, Konto, Kategorie oder Kostenrahmen.',
+    'reports_report_tag_pieCharts'              => 'Diese Diagramme geben Ihnen Einblick in Ausgaben und Einnahmen ja Schlagwort, Konto, Kategorie oder Budget.',
     'reports_report_tag_incomeAndExpensesChart' => 'Diese Tabelle zeigt Ihre Ausgaben und Einnahmen je Schlagwort.',
 
-    'reports_report_budget_intro'                             => 'Dieser Bericht gibt Ihnen Einblick in eine oder mehrere Kostenrahmen.',
-    'reports_report_budget_pieCharts'                         => 'Diese Diagramme geben Ihnen Einblick in Ausgaben und Einnahmen je Kostenrahmen oder Konto.',
+    'reports_report_budget_intro'                             => 'Dieser Bericht gibt Ihnen Einblick in ein oder mehrere Budgets.',
+    'reports_report_budget_pieCharts'                         => 'Diese Diagramme geben Ihnen Einblick in Ausgaben und Einnahmen je Budget oder Konto.',
     'reports_report_budget_incomeAndExpensesChart'            => 'Dieses Diagramm zeigt Ihre Ausgaben und Einnahmen je Budget.',
 
     // create transaction
     'transactions_create_switch_box'                          => 'Verwenden Sie diese Schaltflächen, um schnell den Typ der Transaktion zu ändern, die Sie speichern möchten.',
     'transactions_create_ffInput_category'                    => 'Dies ist ein Freitextfeld. Zuvor erstellte Kategorien werden vorgeschlagen.',
-    'transactions_create_withdrawal_ffInput_budget'           => 'Verknüpfen Sie Ihre Ausgaben mit einem Kostenplan für eine bessere Finanzkontrolle.',
+    'transactions_create_withdrawal_ffInput_budget'           => 'Verknüpfen Sie für eine bessere Finanzkontrolle Ihre Ausgaben mit einem Budget.',
     'transactions_create_withdrawal_currency_dropdown_amount' => 'Verwenden Sie dieses Dropdown, wenn ihre Abbuchung in einer anderen Währung ist.',
     'transactions_create_deposit_currency_dropdown_amount'    => 'Verwenden Sie dieses Dropdown, wenn ihre Einzahlung in einer anderen Währung ist.',
     'transactions_create_transfer_ffInput_piggy_bank_id'      => 'Wählen Sie ein Sparschwein aus und verknüpfen Sie diese Umbuchung mit Ihren Ersparnissen.',

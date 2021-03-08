@@ -1,22 +1,22 @@
 <?php
 /**
  * General.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -24,18 +24,21 @@ namespace FireflyIII\Support\Twig;
 
 use Carbon\Carbon;
 use FireflyIII\Models\Account;
+use FireflyIII\Repositories\Account\AccountRepositoryInterface;
 use FireflyIII\Repositories\User\UserRepositoryInterface;
-use FireflyIII\Support\Twig\Extension\Account as AccountExtension;
+use FireflyIII\Support\Search\OperatorQuerySearch;
 use League\CommonMark\CommonMarkConverter;
+use League\CommonMark\Environment;
+use League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
 use Route;
-use Twig_Extension;
-use Twig_SimpleFilter;
-use Twig_SimpleFunction;
+use Twig\Extension\AbstractExtension;
+use Twig\TwigFilter;
+use Twig\TwigFunction;
 
 /**
  * Class TwigSupport.
  */
-class General extends Twig_Extension
+class General extends AbstractExtension
 {
     /**
      * @return array
@@ -56,33 +59,43 @@ class General extends Twig_Extension
     public function getFunctions(): array
     {
         return [
-            $this->getCurrencyCode(),
-            $this->getCurrencySymbol(),
             $this->phpdate(),
             $this->activeRouteStrict(),
             $this->activeRoutePartial(),
-            $this->activeRoutePartialWhat(),
+            $this->activeRoutePartialObjectType(),
+            $this->menuOpenRoutePartial(),
             $this->formatDate(),
-            new Twig_SimpleFunction('accountGetMetaField', [AccountExtension::class, 'getMetaField']),
+            $this->getMetaField(),
             $this->hasRole(),
+            $this->getRootSearchOperator(),
         ];
+    }
+
+    protected function getRootSearchOperator(): TwigFunction
+    {
+        return new TwigFunction(
+            'getRootSearchOperator',
+            static function (string $operator): string {
+                return OperatorQuerySearch::getRootOperator($operator);
+            }
+        );
     }
 
     /**
      * Will return "active" when a part of the route matches the argument.
      * ie. "accounts" will match "accounts.index".
      *
-     * @return Twig_SimpleFunction
+     * @return TwigFunction
      */
-    protected function activeRoutePartial(): Twig_SimpleFunction
+    protected function activeRoutePartial(): TwigFunction
     {
-        return new Twig_SimpleFunction(
+        return new TwigFunction(
             'activeRoutePartial',
-            function (): string {
-                $args  = \func_get_args();
+            static function (): string {
+                $args  = func_get_args();
                 $route = $args[0]; // name of the route.
                 $name  = Route::getCurrentRoute()->getName() ?? '';
-                if (!(false === strpos($name, $route))) {
+                if (false !== strpos($name, $route)) {
                     return 'active';
                 }
 
@@ -92,20 +105,43 @@ class General extends Twig_Extension
     }
 
     /**
-     * This function will return "active" when the current route matches the first argument (even partly)
-     * but, the variable $what has been set and matches the second argument.
+     * Will return "menu-open" when a part of the route matches the argument.
+     * ie. "accounts" will match "accounts.index".
      *
-     * @return Twig_SimpleFunction
+     * @return TwigFunction
      */
-    protected function activeRoutePartialWhat(): Twig_SimpleFunction
+    protected function menuOpenRoutePartial(): TwigFunction
     {
-        return new Twig_SimpleFunction(
-            'activeRoutePartialWhat',
-            function ($context): string {
-                [, $route, $what] = \func_get_args();
-                $activeWhat = $context['what'] ?? false;
+        return new TwigFunction(
+            'menuOpenRoutePartial',
+            static function (): string {
+                $args  = func_get_args();
+                $route = $args[0]; // name of the route.
+                $name  = Route::getCurrentRoute()->getName() ?? '';
+                if (false !== strpos($name, $route)) {
+                    return 'menu-open';
+                }
 
-                if ($what === $activeWhat && !(false === stripos(Route::getCurrentRoute()->getName(), $route))) {
+                return '';
+            }
+        );
+    }
+
+    /**
+     * This function will return "active" when the current route matches the first argument (even partly)
+     * but, the variable $objectType has been set and matches the second argument.
+     *
+     * @return TwigFunction
+     */
+    protected function activeRoutePartialObjectType(): TwigFunction
+    {
+        return new TwigFunction(
+            'activeRoutePartialObjectType',
+            static function ($context): string {
+                [, $route, $objectType] = func_get_args();
+                $activeObjectType = $context['objectType'] ?? false;
+
+                if ($objectType === $activeObjectType && false !== stripos(Route::getCurrentRoute()->getName(), $route)) {
                     return 'active';
                 }
 
@@ -119,14 +155,14 @@ class General extends Twig_Extension
      * Will return "active" when the current route matches the given argument
      * exactly.
      *
-     * @return Twig_SimpleFunction
+     * @return TwigFunction
      */
-    protected function activeRouteStrict(): Twig_SimpleFunction
+    protected function activeRouteStrict(): TwigFunction
     {
-        return new Twig_SimpleFunction(
+        return new TwigFunction(
             'activeRouteStrict',
-            function (): string {
-                $args  = \func_get_args();
+            static function (): string {
+                $args  = func_get_args();
                 $route = $args[0]; // name of the route.
 
                 if (Route::getCurrentRoute()->getName() === $route) {
@@ -139,15 +175,17 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFilter
+     * Show account balance. Only used on the front page of Firefly III.
+     *
+     * @return TwigFilter
      */
-    protected function balance(): Twig_SimpleFilter
+    protected function balance(): TwigFilter
     {
-        return new Twig_SimpleFilter(
+        return new TwigFilter(
             'balance',
-            function (?Account $account): string {
+            static function (?Account $account): string {
                 if (null === $account) {
-                    return 'NULL';
+                    return '0';
                 }
                 /** @var Carbon $date */
                 $date = session('end', Carbon::now()->endOfMonth());
@@ -158,11 +196,13 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFunction
+     * Formats a string as a thing by converting it to a Carbon first.
+     *
+     * @return TwigFunction
      */
-    protected function formatDate(): Twig_SimpleFunction
+    protected function formatDate(): TwigFunction
     {
-        return new Twig_SimpleFunction(
+        return new TwigFunction(
             'formatDate',
             function (string $date, string $format): string {
                 $carbon = new Carbon($date);
@@ -173,13 +213,15 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFilter
+     * Used to convert 1024 to 1kb etc.
+     *
+     * @return TwigFilter
      */
-    protected function formatFilesize(): Twig_SimpleFilter
+    protected function formatFilesize(): TwigFilter
     {
-        return new Twig_SimpleFilter(
+        return new TwigFilter(
             'filesize',
-            function (int $size): string {
+            static function (int $size): string {
                 // less than one GB, more than one MB
                 if ($size < (1024 * 1024 * 2014) && $size >= (1024 * 1024)) {
                     return round($size / (1024 * 1024), 2) . ' MB';
@@ -196,27 +238,23 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFunction
+     * @return TwigFunction
+     * @deprecated  because it uses a query in a view
+     * TODO remove me.
      */
-    protected function getCurrencyCode(): Twig_SimpleFunction
+    protected function getMetaField(): TwigFunction
     {
-        return new Twig_SimpleFunction(
-            'getCurrencyCode',
-            function (): string {
-                return app('amount')->getCurrencyCode();
-            }
-        );
-    }
+        return new TwigFunction(
+            'accountGetMetaField',
+            static function (Account $account, string $field): string {
+                /** @var AccountRepositoryInterface $repository */
+                $repository = app(AccountRepositoryInterface::class);
+                $result     = $repository->getMetaValue($account, $field);
+                if (null === $result) {
+                    return '';
+                }
 
-    /**
-     * @return Twig_SimpleFunction
-     */
-    protected function getCurrencySymbol(): Twig_SimpleFunction
-    {
-        return new Twig_SimpleFunction(
-            'getCurrencySymbol',
-            function (): string {
-                return app('amount')->getCurrencySymbol();
+                return $result;
             }
         );
     }
@@ -224,13 +262,13 @@ class General extends Twig_Extension
     /**
      * Will return true if the user is of role X.
      *
-     * @return Twig_SimpleFunction
+     * @return TwigFunction
      */
-    protected function hasRole(): Twig_SimpleFunction
+    protected function hasRole(): TwigFunction
     {
-        return new Twig_SimpleFunction(
+        return new TwigFunction(
             'hasRole',
-            function (string $role): bool {
+            static function (string $role): bool {
                 $repository = app(UserRepositoryInterface::class);
                 if ($repository->hasRole(auth()->user(), $role)) {
                     return true;
@@ -242,14 +280,17 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFilter
+     * @return TwigFilter
      */
-    protected function markdown(): Twig_SimpleFilter
+    protected function markdown(): TwigFilter
     {
-        return new Twig_SimpleFilter(
+        return new TwigFilter(
             'markdown',
-            function (string $text): string {
-                $converter = new CommonMarkConverter;
+            static function (string $text): string {
+                $environment = Environment::createCommonMarkEnvironment();
+                $environment->addExtension(new GithubFlavoredMarkdownExtension());
+
+                $converter = new CommonMarkConverter(['allow_unsafe_links' => false, 'max_nesting_level' => 3, 'html_input' => 'escape'], $environment);
 
                 return $converter->convertToHtml($text);
             }, ['is_safe' => ['html']]
@@ -257,13 +298,15 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFilter
+     * Show icon with attachment.
+     *
+     * @return TwigFilter
      */
-    protected function mimeIcon(): Twig_SimpleFilter
+    protected function mimeIcon(): TwigFilter
     {
-        return new Twig_SimpleFilter(
+        return new TwigFilter(
             'mimeIcon',
-            function (string $string): string {
+            static function (string $string): string {
                 switch ($string) {
                     default:
                         return 'fa-file-o';
@@ -334,16 +377,17 @@ class General extends Twig_Extension
     }
 
     /**
-     * @return Twig_SimpleFunction
+     * Basic example thing for some views.
+     *
+     * @return TwigFunction
      */
-    protected function phpdate(): Twig_SimpleFunction
+    protected function phpdate(): TwigFunction
     {
-        return new Twig_SimpleFunction(
+        return new TwigFunction(
             'phpdate',
-            function (string $str): string {
+            static function (string $str): string {
                 return date($str);
             }
         );
     }
-
 }

@@ -2,22 +2,22 @@
 
 /**
  * list.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -37,14 +37,18 @@ return [
     'linked_to_rules'         => '
 İlgili kurallar',
     'active'                  => 'Aktif mi?',
+    'percentage'              => 'yzd.',
+    'recurring_transaction'   => 'Recurring transaction',
+    'next_due'                => 'Sonraki ödeme',
+    'transaction_type'        => 'Tip',
     'lastActivity'            => 'Son Etkinlik',
     'balanceDiff'             => 'Bakiye farkı',
-    'matchesOn'               => 'Eşleşti',
+    'other_meta_data'         => 'Diğer meta verisi',
     'account_type'            => 'Hesap Türü',
     'created_at'              => 'Tarihinde oluşturuldu',
     'account'                 => 'Hesap',
+    'external_uri'            => 'External URI',
     'matchingAmount'          => 'Miktar',
-    'split_number'            => 'Ayır #',
     'destination'             => 'Hedef',
     'source'                  => 'Kaynak',
     'next_expected_match'     => 'Beklenen sonraki eşleşme',
@@ -52,7 +56,6 @@ return [
     'repeat_freq'             => 'Tekrarlar',
     'description'             => 'Açıklama',
     'amount'                  => 'Miktar',
-    'internal_reference'      => 'Dahili referans',
     'date'                    => 'Tarih',
     'interest_date'           => 'Faiz tarihi',
     'book_date'               => 'Kitap tarihi',
@@ -60,7 +63,7 @@ return [
     'due_date'                => 'Bitiş tarihi',
     'payment_date'            => 'Ödeme tarihi',
     'invoice_date'            => 'Fatura tarihi',
-    'interal_reference'       => 'Dahili referans',
+    'internal_reference'      => 'Internal reference',
     'notes'                   => 'Notlar',
     'from'                    => 'Kimden',
     'piggy_bank'              => 'Kumbara',
@@ -88,8 +91,6 @@ return [
     'attachments_count'       => 'Eklerin sayısı',
     'bills_count'             => 'Fatura sayısı',
     'categories_count'        => 'Kategori sayısı',
-    'export_jobs_count'       => 'İhracat sayısı',
-    'import_jobs_count'       => 'İthalat sayısı',
     'budget_count'            => 'Bütçelerin sayısı',
     'rule_and_groups_count'   => 'Kuralların ve kural gruplarının sayısı',
     'tags_count'              => 'Etiket sayısı',
@@ -103,20 +104,18 @@ return [
     'sum_withdrawals'         => 'Para çekme toplamı',
     'sum_deposits'            => 'Toplam para yatırma',
     'sum_transfers'           => 'Transferlerin toplamı',
+    'sum_reconciliations'     => 'Sum of reconciliations',
     'reconcile'               => 'Onaylanmış',
-    'account_on_spectre'      => '(Spectre) Hesabı',
-    'account_on_ynab'         => 'Account (YNAB)',
-    'do_import'               => 'Bu hesaptan içeri aktar',
-    'sepa-ct-id'              => 'SEPA End to End Identifier',
-    'sepa-ct-op'              => 'SEPA Opposing Account Identifier',
-    'sepa-db'                 => 'SEPA Mandate Identifier',
-    'sepa-country'            => 'SEPA Country',
-    'sepa-cc'                 => 'SEPA Clearing Code',
-    'sepa-ep'                 => 'SEPA External Purpose',
-    'sepa-ci'                 => 'SEPA Creditor Identifier',
-    'sepa-batch-id'           => 'SEPA Batch ID',
-    'external_id'             => 'External ID',
-    'account_at_bunq'         => 'Account with bunq',
+    'sepa_ct_id'              => 'Uçtan uca SEPA tanımlayıcı',
+    'sepa_ct_op'              => 'SEPA Karşı Hesap Tanımlayıcısı',
+    'sepa_db'                 => 'SEPA Vekil Tanımlayıcısı',
+    'sepa_country'            => 'SEPA Ülke',
+    'sepa_cc'                 => 'SEPA Temizleme Kodu',
+    'sepa_ep'                 => 'SEPA Dış Amaç',
+    'sepa_ci'                 => 'SEPA Alacaklı Tanımlayıcısı',
+    'sepa_batch_id'           => 'SEPA Toplu Kimlik',
+    'external_id'             => 'Dış Kimlik',
+    'account_at_bunq'         => 'Bunq hesapları',
     'file_name'               => 'Dosya adı',
     'file_size'               => 'Dosya boyutu',
     'file_type'               => 'Dosya tipi',
@@ -131,7 +130,7 @@ return [
     'transaction_s'           => 'İşlemler',
     'field'                   => 'Alan',
     'value'                   => 'Değer',
-    'interest'                => 'Interest',
-    'interest_period'         => 'interest period',
-    'liability_type'          => 'Type of liability',
+    'interest'                => 'Faiz',
+    'interest_period'         => 'faiz periyodu',
+    'liability_type'          => 'Borç tipi',
 ];

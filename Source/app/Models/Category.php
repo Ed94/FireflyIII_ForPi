@@ -1,22 +1,22 @@
 <?php
 /**
  * Category.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -24,25 +24,50 @@ declare(strict_types=1);
 namespace FireflyIII\Models;
 
 use Carbon\Carbon;
-use Crypt;
+use Eloquent;
 use FireflyIII\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Builder;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Class Category.
+ * FireflyIII\Models\Category
  *
- * @property string      $name
- * @property int         $id
- * @property float       $spent // used in category reports
- * @property Carbon|null lastActivity
- * @property bool        encrypted
- * @property User        $user
- * @property Carbon      $created_at
- * @property Carbon      $updated_at
+ * @property int $id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property int $user_id
+ * @property string $name
+ * @property bool $encrypted
+ * @property-read Collection|\FireflyIII\Models\Attachment[] $attachments
+ * @property-read int|null $attachments_count
+ * @property-read Collection|\FireflyIII\Models\Note[] $notes
+ * @property-read int|null $notes_count
+ * @property-read Collection|\FireflyIII\Models\TransactionJournal[] $transactionJournals
+ * @property-read int|null $transaction_journals_count
+ * @property-read Collection|\FireflyIII\Models\Transaction[] $transactions
+ * @property-read int|null $transactions_count
+ * @property-read User $user
+ * @method static \Illuminate\Database\Eloquent\Builder|Category newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|Category newQuery()
+ * @method static Builder|Category onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|Category query()
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereEncrypted($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Category whereUserId($value)
+ * @method static Builder|Category withTrashed()
+ * @method static Builder|Category withoutTrashed()
+ * @mixin Eloquent
  */
 class Category extends Model
 {
@@ -70,13 +95,13 @@ class Category extends Model
      *
      * @param string $value
      *
-     * @return Category
      * @throws NotFoundHttpException
+     * @return Category
      */
     public static function routeBinder(string $value): Category
     {
         if (auth()->check()) {
-            $categoryId = (int)$value;
+            $categoryId = (int) $value;
             /** @var User $user */
             $user = auth()->user();
             /** @var Category $category */
@@ -90,42 +115,30 @@ class Category extends Model
 
     /**
      * @codeCoverageIgnore
-     *
-     * @param $value
-     *
-     * @return string|null
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
-     */
-    public function getNameAttribute($value): ?string
-    {
-        if ($this->encrypted) {
-            return Crypt::decrypt($value);
-        }
-
-        return $value;
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setNameAttribute($value): void
-    {
-        $encrypt                       = config('firefly.encryption');
-        $this->attributes['name']      = $encrypt ? Crypt::encrypt($value) : $value;
-        $this->attributes['encrypted'] = $encrypt;
-    }
-
-    /**
-     * @codeCoverageIgnore
      * @return BelongsToMany
      */
     public function transactionJournals(): BelongsToMany
     {
         return $this->belongsToMany(TransactionJournal::class, 'category_transaction_journal', 'category_id');
+    }
+
+
+    /**
+     * @codeCoverageIgnore
+     * @return MorphMany
+     */
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
+    }
+
+    /**
+     * @codeCoverageIgnore
+     * Get all of the category's notes.
+     */
+    public function notes(): MorphMany
+    {
+        return $this->morphMany(Note::class, 'noteable');
     }
 
     /**

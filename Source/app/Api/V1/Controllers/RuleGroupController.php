@@ -1,53 +1,48 @@
 <?php
 /**
  * RuleGroupController.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 namespace FireflyIII\Api\V1\Controllers;
 
-use Carbon\Carbon;
-use FireflyIII\Api\V1\Requests\RuleGroupRequest;
+use Exception;
+use FireflyIII\Api\V1\Requests\RuleGroupUpdateRequest;
+use FireflyIII\Api\V1\Requests\RuleGroupStoreRequest;
+use FireflyIII\Api\V1\Requests\RuleGroupTestRequest;
+use FireflyIII\Api\V1\Requests\RuleGroupTriggerRequest;
 use FireflyIII\Exceptions\FireflyException;
-use FireflyIII\Jobs\ExecuteRuleOnExistingTransactions;
-use FireflyIII\Models\AccountType;
-use FireflyIII\Models\Rule;
 use FireflyIII\Models\RuleGroup;
 use FireflyIII\Repositories\Account\AccountRepositoryInterface;
 use FireflyIII\Repositories\RuleGroup\RuleGroupRepositoryInterface;
-use FireflyIII\TransactionRules\TransactionMatcher;
+use FireflyIII\TransactionRules\Engine\RuleEngineInterface;
 use FireflyIII\Transformers\RuleGroupTransformer;
 use FireflyIII\Transformers\RuleTransformer;
-use FireflyIII\Transformers\TransactionTransformer;
+use FireflyIII\Transformers\TransactionGroupTransformer;
 use FireflyIII\User;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use League\Fractal\Manager;
 use League\Fractal\Pagination\IlluminatePaginatorAdapter;
 use League\Fractal\Resource\Collection as FractalCollection;
 use League\Fractal\Resource\Item;
-use League\Fractal\Serializer\JsonApiSerializer;
-use Log;
-
 
 /**
  * Class RuleGroupController
@@ -56,11 +51,15 @@ class RuleGroupController extends Controller
 {
     /** @var AccountRepositoryInterface Account repository */
     private $accountRepository;
+
     /** @var RuleGroupRepositoryInterface The rule group repository */
     private $ruleGroupRepository;
 
+
     /**
      * RuleGroupController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -87,6 +86,7 @@ class RuleGroupController extends Controller
      * @param RuleGroup $ruleGroup
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
     public function delete(RuleGroup $ruleGroup): JsonResponse
     {
@@ -98,18 +98,14 @@ class RuleGroupController extends Controller
     /**
      * List all of them.
      *
-     * @param Request $request
-     *
-     * @return JsonResponse]
+     * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        // create some objects:
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-
+        $manager = $this->getManager();
         // types to get, page size:
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
 
         // get list of rule groups. Count it and split it.
         $collection = $this->ruleGroupRepository->get();
@@ -120,9 +116,6 @@ class RuleGroupController extends Controller
         $paginator = new LengthAwarePaginator($ruleGroups, $count, $pageSize, $this->parameters->get('page'));
         $paginator->setPath(route('api.v1.rule_groups.index') . $this->buildParams());
 
-        // present to user.
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
         /** @var RuleGroupTransformer $transformer */
         $transformer = app(RuleGroupTransformer::class);
         $transformer->setParameters($this->parameters);
@@ -130,23 +123,60 @@ class RuleGroupController extends Controller
         $resource = new FractalCollection($ruleGroups, $transformer, 'rule_groups');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
-     * @param Request   $request
-     * @param RuleGroup $group
+     * @param RuleGroup $ruleGroup
      *
      * @return JsonResponse
      */
-    public function rules(Request $request, RuleGroup $group): JsonResponse
+    public function moveDown(RuleGroup $ruleGroup): JsonResponse
     {
-        // create some objects:
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
+        $this->ruleGroupRepository->moveDown($ruleGroup);
+        $ruleGroup = $this->ruleGroupRepository->find($ruleGroup->id);
+        $manager   = $this->getManager();
 
+        /** @var RuleGroupTransformer $transformer */
+        $transformer = app(RuleGroupTransformer::class);
+        $transformer->setParameters($this->parameters);
+
+        $resource = new Item($ruleGroup, $transformer, 'rule_groups');
+
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
+    }
+
+    /**
+     * @param RuleGroup $ruleGroup
+     *
+     * @return JsonResponse
+     */
+    public function moveUp(RuleGroup $ruleGroup): JsonResponse
+    {
+        $this->ruleGroupRepository->moveUp($ruleGroup);
+        $ruleGroup = $this->ruleGroupRepository->find($ruleGroup->id);
+        $manager   = $this->getManager();
+
+        /** @var RuleGroupTransformer $transformer */
+        $transformer = app(RuleGroupTransformer::class);
+        $transformer->setParameters($this->parameters);
+
+        $resource = new Item($ruleGroup, $transformer, 'rule_groups');
+
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
+    }
+
+    /**
+     * @param RuleGroup $group
+     *
+     * @return JsonResponse
+     * @codeCoverageIgnore
+     */
+    public function rules(RuleGroup $group): JsonResponse
+    {
+        $manager = $this->getManager();
         // types to get, page size:
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
 
         // get list of budgets. Count it and split it.
         $collection = $this->ruleGroupRepository->getRules($group);
@@ -157,9 +187,6 @@ class RuleGroupController extends Controller
         $paginator = new LengthAwarePaginator($rules, $count, $pageSize, $this->parameters->get('page'));
         $paginator->setPath(route('api.v1.rule_groups.rules', [$group->id]) . $this->buildParams());
 
-        // present to user.
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
         /** @var RuleTransformer $transformer */
         $transformer = app(RuleTransformer::class);
         $transformer->setParameters($this->parameters);
@@ -167,47 +194,42 @@ class RuleGroupController extends Controller
         $resource = new FractalCollection($rules, $transformer, 'rules');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
      * List single resource.
      *
-     * @param Request   $request
      * @param RuleGroup $ruleGroup
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function show(Request $request, RuleGroup $ruleGroup): JsonResponse
+    public function show(RuleGroup $ruleGroup): JsonResponse
     {
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
+        $manager = $this->getManager();
         /** @var RuleGroupTransformer $transformer */
         $transformer = app(RuleGroupTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new Item($ruleGroup, $transformer, 'rule_groups');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
      * Store new object.
      *
-     * @param RuleGroupRequest $request
+     * @param RuleGroupStoreRequest $request
      *
      * @return JsonResponse
      */
-    public function store(RuleGroupRequest $request): JsonResponse
+    public function store(RuleGroupStoreRequest $request): JsonResponse
     {
         $ruleGroup = $this->ruleGroupRepository->store($request->getAll());
-        $manager   = new Manager();
-        $baseUrl   = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager   = $this->getManager();
 
         /** @var RuleGroupTransformer $transformer */
         $transformer = app(RuleGroupTransformer::class);
@@ -215,152 +237,120 @@ class RuleGroupController extends Controller
 
         $resource = new Item($ruleGroup, $transformer, 'rule_groups');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
-     * @param Request   $request
-     * @param RuleGroup $group
+     * @param RuleGroupTestRequest $request
+     * @param RuleGroup            $group
      *
      * @return JsonResponse
      * @throws FireflyException
+     *
      */
-    public function testGroup(Request $request, RuleGroup $group): JsonResponse
+    public function testGroup(RuleGroupTestRequest $request, RuleGroup $group): JsonResponse
     {
-        Log::debug('Now in testGroup()');
         /** @var Collection $rules */
         $rules = $this->ruleGroupRepository->getActiveRules($group);
         if (0 === $rules->count()) {
-            throw new FireflyException('No rules in this rule group.');
+            throw new FireflyException('200023: No rules in this rule group.');
         }
-        $pageSize     = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
-        $page         = 0 === (int)$request->query('page') ? 1 : (int)$request->query('page');
-        $startDate    = null === $request->query('start_date') ? null : Carbon::createFromFormat('Y-m-d', $request->query('start_date'));
-        $endDate      = null === $request->query('end_date') ? null : Carbon::createFromFormat('Y-m-d', $request->query('end_date'));
-        $searchLimit  = 0 === (int)$request->query('search_limit') ? (int)config('firefly.test-triggers.limit') : (int)$request->query('search_limit');
-        $triggerLimit = 0 === (int)$request->query('triggered_limit') ? (int)config('firefly.test-triggers.range') : (int)$request->query('triggered_limit');
-        $accountList  = '' === (string)$request->query('accounts') ? [] : explode(',', $request->query('accounts'));
-        $accounts     = new Collection;
+        $parameters = $request->getTestParameters();
 
-        foreach ($accountList as $accountId) {
-            Log::debug(sprintf('Searching for asset account with id "%s"', $accountId));
-            $account = $this->accountRepository->findNull((int)$accountId);
-            if (null !== $account && AccountType::ASSET === $account->accountType->type) {
-                Log::debug(sprintf('Found account #%d ("%s") and its an asset account', $account->id, $account->name));
-                $accounts->push($account);
-            }
-            if (null === $account) {
-                Log::debug(sprintf('No asset account with id "%s"', $accountId));
-            }
+        /** @var RuleEngineInterface $ruleEngine */
+        $ruleEngine = app(RuleEngineInterface::class);
+        $ruleEngine->setRules($rules);
+
+        // overrule the rule(s) if necessary.
+        if (array_key_exists('start', $parameters) && null !== $parameters['start']) {
+            // add a range:
+            $ruleEngine->addOperator(['type' => 'date_after', 'value' => $parameters['start']->format('Y-m-d')]);
         }
 
-        $matchingTransactions = new Collection;
-        Log::debug(sprintf('Going to test %d rules', $rules->count()));
-        /** @var Rule $rule */
-        foreach ($rules as $rule) {
-            Log::debug(sprintf('Now testing rule #%d, "%s"', $rule->id, $rule->title));
-            /** @var TransactionMatcher $matcher */
-            $matcher = app(TransactionMatcher::class);
-            // set all parameters:
-            $matcher->setRule($rule);
-            $matcher->setStartDate($startDate);
-            $matcher->setEndDate($endDate);
-            $matcher->setSearchLimit($searchLimit);
-            $matcher->setTriggeredLimit($triggerLimit);
-            $matcher->setAccounts($accounts);
-
-            $result               = $matcher->findTransactionsByRule();
-            $matchingTransactions = $result->merge($matchingTransactions);
+        if (array_key_exists('end', $parameters) && null !== $parameters['end']) {
+            // add a range:
+            $ruleEngine->addOperator(['type' => 'date_before', 'value' => $parameters['end']->format('Y-m-d')]);
         }
-        $matchingTransactions = $matchingTransactions->unique('id');
+        if (array_key_exists('accounts', $parameters) && '' !== $parameters['accounts']) {
+            $ruleEngine->addOperator(['type' => 'account_id', 'value' => $parameters['accounts']]);
+        }
 
-        // make paginator out of results.
-        $count        = $matchingTransactions->count();
-        $transactions = $matchingTransactions->slice(($page - 1) * $pageSize, $pageSize);
-        // make paginator:
-        $paginator = new LengthAwarePaginator($transactions, $count, $pageSize, $this->parameters->get('page'));
+        // file the rule(s)
+        $transactions = $ruleEngine->find();
+        $count        = $transactions->count();
+
+        $paginator = new LengthAwarePaginator($transactions, $count, 31337, $this->parameters->get('page'));
         $paginator->setPath(route('api.v1.rule_groups.test', [$group->id]) . $this->buildParams());
 
         // resulting list is presented as JSON thing.
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        $manager = $this->getManager();
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
 
-        $resource = new FractalCollection($matchingTransactions, $transformer, 'transactions');
+        $resource = new FractalCollection($transactions, $transformer, 'transactions');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
      * Execute the given rule group on a set of existing transactions.
      *
-     * @param Request   $request
-     * @param RuleGroup $group
+     * @param RuleGroupTriggerRequest $request
+     * @param RuleGroup               $group
      *
      * @return JsonResponse
+     * @throws Exception
      */
-    public function triggerGroup(Request $request, RuleGroup $group): JsonResponse
+    public function triggerGroup(RuleGroupTriggerRequest $request, RuleGroup $group): JsonResponse
     {
-        // Get parameters specified by the user
-        /** @var User $user */
-        $user        = auth()->user();
-        $startDate   = new Carbon($request->get('start_date'));
-        $endDate     = new Carbon($request->get('end_date'));
-        $accountList = '' === (string)$request->query('accounts') ? [] : explode(',', $request->query('accounts'));
-        $accounts    = new Collection;
-
-        foreach ($accountList as $accountId) {
-            Log::debug(sprintf('Searching for asset account with id "%s"', $accountId));
-            $account = $this->accountRepository->findNull((int)$accountId);
-            if (null !== $account && AccountType::ASSET === $account->accountType->type) {
-                Log::debug(sprintf('Found account #%d ("%s") and its an asset account', $account->id, $account->name));
-                $accounts->push($account);
-            }
-            if (null === $account) {
-                Log::debug(sprintf('No asset account with id "%s"', $accountId));
-            }
-        }
-
         /** @var Collection $rules */
         $rules = $this->ruleGroupRepository->getActiveRules($group);
-        foreach ($rules as $rule) {
-            // Create a job to do the work asynchronously
-            $job = new ExecuteRuleOnExistingTransactions($rule);
-
-            // Apply parameters to the job
-            $job->setUser($user);
-            $job->setAccounts($accounts);
-            $job->setStartDate($startDate);
-            $job->setEndDate($endDate);
-
-            // Dispatch a new job to execute it in a queue
-            $this->dispatch($job);
+        if (0 === $rules->count()) {
+            throw new FireflyException('200023: No rules in this rule group.');
         }
+
+        // Get parameters specified by the user
+        $parameters = $request->getTriggerParameters();
+
+        /** @var RuleEngineInterface $ruleEngine */
+        $ruleEngine = app(RuleEngineInterface::class);
+        $ruleEngine->setRules($rules);
+
+        // overrule the rule(s) if necessary.
+        if (array_key_exists('start', $parameters) && null !== $parameters['start']) {
+            // add a range:
+            $ruleEngine->addOperator(['type' => 'date_after', 'value' => $parameters['start']->format('Y-m-d')]);
+        }
+
+        if (array_key_exists('end', $parameters) && null !== $parameters['end']) {
+            // add a range:
+            $ruleEngine->addOperator(['type' => 'date_before', 'value' => $parameters['end']->format('Y-m-d')]);
+        }
+        if (array_key_exists('accounts', $parameters) && '' !== $parameters['accounts']) {
+            $ruleEngine->addOperator(['type' => 'account_id', 'value' => $parameters['accounts']]);
+        }
+
+        // file the rule(s)
+        $ruleEngine->fire();
 
         return response()->json([], 204);
     }
 
     /**
      * Update a rule group.
-     * TODO update order of rule group
      *
-     * @param RuleGroupRequest $request
+     * @param RuleGroupUpdateRequest $request
      * @param RuleGroup        $ruleGroup
      *
      * @return JsonResponse
      */
-    public function update(RuleGroupRequest $request, RuleGroup $ruleGroup): JsonResponse
+    public function update(RuleGroupUpdateRequest $request, RuleGroup $ruleGroup): JsonResponse
     {
         $ruleGroup = $this->ruleGroupRepository->update($ruleGroup, $request->getAll());
-        $manager   = new Manager();
-        $baseUrl   = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager   = $this->getManager();
 
         /** @var RuleGroupTransformer $transformer */
         $transformer = app(RuleGroupTransformer::class);
@@ -368,7 +358,6 @@ class RuleGroupController extends Controller
 
         $resource = new Item($ruleGroup, $transformer, 'rule_groups');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
-
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 }

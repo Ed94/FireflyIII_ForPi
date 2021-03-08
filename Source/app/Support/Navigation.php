@@ -1,22 +1,22 @@
 <?php
 /**
  * Navigation.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
@@ -24,6 +24,7 @@ namespace FireflyIII\Support;
 
 use Carbon\Carbon;
 use FireflyIII\Exceptions\FireflyException;
+use FireflyIII\Helpers\Fiscal\FiscalHelperInterface;
 use Log;
 
 /**
@@ -37,8 +38,6 @@ class Navigation
      * @param                $skip
      *
      * @return \Carbon\Carbon
-     *
-     * @throws \FireflyIII\Exceptions\FireflyException
      */
     public function addPeriod(Carbon $theDate, string $repeatFreq, int $skip): Carbon
     {
@@ -46,12 +45,23 @@ class Navigation
         $add  = ($skip + 1);
 
         $functionMap = [
-            '1D'      => 'addDays', 'daily' => 'addDays',
-            '1W'      => 'addWeeks', 'weekly' => 'addWeeks', 'week' => 'addWeeks',
-            '1M'      => 'addMonths', 'month' => 'addMonths', 'monthly' => 'addMonths', '3M' => 'addMonths',
-            'quarter' => 'addMonths', 'quarterly' => 'addMonths', '6M' => 'addMonths', 'half-year' => 'addMonths',
-            'year'    => 'addYears', 'yearly' => 'addYears', '1Y' => 'addYears',
-            'custom'  => 'addMonths', // custom? just add one month.
+            '1D'        => 'addDays',
+            'daily'     => 'addDays',
+            '1W'        => 'addWeeks',
+            'weekly'    => 'addWeeks',
+            'week'      => 'addWeeks',
+            '1M'        => 'addMonths',
+            'month'     => 'addMonths',
+            'monthly'   => 'addMonths',
+            '3M'        => 'addMonths',
+            'quarter'   => 'addMonths',
+            'quarterly' => 'addMonths',
+            '6M'        => 'addMonths',
+            'half-year' => 'addMonths',
+            'year'      => 'addYears',
+            'yearly'    => 'addYears',
+            '1Y'        => 'addYears',
+            'custom'    => 'addMonths', // custom? just add one month.
         ];
         $modifierMap = [
             'quarter'   => 3,
@@ -62,7 +72,9 @@ class Navigation
         ];
 
         if (!isset($functionMap[$repeatFreq])) {
-            throw new FireflyException(sprintf('Cannot do addPeriod for $repeat_freq "%s"', $repeatFreq));
+            Log::error(sprintf('Cannot do addPeriod for $repeat_freq "%s"', $repeatFreq));
+
+            return $theDate;
         }
         if (isset($modifierMap[$repeatFreq])) {
             $add *= $modifierMap[$repeatFreq];
@@ -70,11 +82,17 @@ class Navigation
         $function = $functionMap[$repeatFreq];
         $date->$function($add);
 
-        // if period is 1M and diff in month is 2 and new DOM = 1, sub a day:
+        // if period is 1M and diff in month is 2 and new DOM > 1, sub a number of days:
+        // AND skip is 1
+        // result is:
+        // '2019-01-29', '2019-02-28'
+        // '2019-01-30', '2019-02-28'
+        // '2019-01-31', '2019-02-28'
+
         $months     = ['1M', 'month', 'monthly'];
         $difference = $date->month - $theDate->month;
-        if (2 === $difference && 1 === $date->day && \in_array($repeatFreq, $months, true)) {
-            $date->subDay();
+        if (1 === $add && 2 === $difference && $date->day > 0 && in_array($repeatFreq, $months, true)) {
+            $date->subDays($date->day);
         }
 
         return $date;
@@ -87,7 +105,7 @@ class Navigation
      *
      * @return array
      * @throws \FireflyIII\Exceptions\FireflyException
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     *
      */
     public function blockPeriods(\Carbon\Carbon $start, \Carbon\Carbon $end, string $range): array
     {
@@ -95,56 +113,49 @@ class Navigation
             [$start, $end] = [$end, $start];
         }
         $periods = [];
-        /*
-         * Start looping per month for 1 year + the rest of the year:
-         */
-        $perMonthEnd   = clone $end;
-        $perMonthStart = clone $end;
-        $perMonthStart->startOfYear()->subYear();
-        $perMonthStart = $start->lt($perMonthStart) ? $perMonthStart : $start;
+        // first, 13 periods of [range]
+        $loopCount = 0;
+        $loopDate  = clone $end;
+        $workStart = clone $loopDate;
+        $workEnd   = clone $loopDate;
+        while ($loopCount < 13) {
+            // make range:
+            $workStart = \Navigation::startOfPeriod($workStart, $range);
+            $workEnd   = \Navigation::endOfPeriod($workStart, $range);
 
-        // loop first set:
-        while ($perMonthEnd >= $perMonthStart) {
-            $perMonthEnd = $this->startOfPeriod($perMonthEnd, $range);
-            $currentEnd  = $this->endOfPeriod($perMonthEnd, $range);
-            if ($currentEnd->gt($start)) {
+            // make sure we don't go overboard
+            if ($workEnd->gt($start)) {
                 $periods[] = [
-                    'start'  => $perMonthEnd,
-                    'end'    => $currentEnd,
+                    'start'  => clone $workStart,
+                    'end'    => clone $workEnd,
                     'period' => $range,
                 ];
             }
-            $perMonthEnd = $this->subtractPeriod($perMonthEnd, $range, 1);
+            // skip to the next period:
+            $workStart->subDay()->startOfDay();
+            $loopCount++;
         }
+        // if $workEnd is still before $start, continue on a yearly basis:
+        $loopCount = 0;
+        if ($workEnd->gt($start)) {
+            while ($workEnd->gt($start) && $loopCount < 20) {
+                // make range:
+                $workStart = app('navigation')->startOfPeriod($workStart, '1Y');
+                $workEnd   = app('navigation')->endOfPeriod($workStart, '1Y');
 
-        // do not continue if date is already less
-        if ($perMonthEnd->lt($start)) {
-            return $periods;
-        }
-
-        // per year variables:
-        $perYearEnd   = clone $perMonthStart;
-        $perYearStart = clone $perMonthStart;
-        unset($perMonthEnd, $currentEnd, $perMonthStart);
-        $perYearEnd->subYear();
-        $perYearStart->subYears(50);
-        $perYearStart = $start->lt($perYearStart) ? $perYearStart : $start;
-        $perYearStart->startOfYear();
-
-        // per year
-        while ($perYearEnd >= $perYearStart) {
-            $perYearEnd = $this->startOfPeriod($perYearEnd, '1Y');
-            $currentEnd = $this->endOfPeriod($perYearEnd, '1Y')->subDay()->endOfDay();
-            if ($currentEnd->gt($start)) {
-                $periods[] = [
-                    'start'  => $perYearEnd,
-                    'end'    => $currentEnd,
-                    'period' => '1Y',
-                ];
+                // make sure we don't go overboard
+                if ($workEnd->gt($start)) {
+                    $periods[] = [
+                        'start'  => clone $workStart,
+                        'end'    => clone $workEnd,
+                        'period' => '1Y',
+                    ];
+                }
+                // skip to the next period:
+                $workStart->subDay()->startOfDay();
+                $loopCount++;
             }
-            $perYearEnd = $this->subtractPeriod($perYearEnd, '1Y', 1);
         }
-
         return $periods;
     }
 
@@ -153,29 +164,40 @@ class Navigation
      * @param                $repeatFreq
      *
      * @return \Carbon\Carbon
-     *
-     * @throws \FireflyIII\Exceptions\FireflyException
      */
     public function endOfPeriod(\Carbon\Carbon $end, string $repeatFreq): Carbon
     {
         $currentEnd = clone $end;
 
         $functionMap = [
-            '1D'   => 'endOfDay', 'daily' => 'endOfDay',
-            '1W'   => 'addWeek', 'week' => 'addWeek', 'weekly' => 'addWeek',
-            '1M'   => 'addMonth', 'month' => 'addMonth', 'monthly' => 'addMonth',
-            '3M'   => 'addMonths', 'quarter' => 'addMonths', 'quarterly' => 'addMonths', '6M' => 'addMonths', 'half-year' => 'addMonths',
-            'year' => 'addYear', 'yearly' => 'addYear', '1Y' => 'addYear',
+            '1D'        => 'endOfDay',
+            'daily'     => 'endOfDay',
+            '1W'        => 'addWeek',
+            'week'      => 'addWeek',
+            'weekly'    => 'addWeek',
+            '1M'        => 'addMonth',
+            'month'     => 'addMonth',
+            'monthly'   => 'addMonth',
+            '3M'        => 'addMonths',
+            'quarter'   => 'addMonths',
+            'quarterly' => 'addMonths',
+            '6M'        => 'addMonths',
+            'half-year' => 'addMonths',
+            'half_year' => 'addMonths',
+            'year'      => 'addYear',
+            'yearly'    => 'addYear',
+            '1Y'        => 'addYear',
         ];
         $modifierMap = [
             'quarter'   => 3,
             '3M'        => 3,
             'quarterly' => 3,
             'half-year' => 6,
+            'half_year' => 6,
             '6M'        => 6,
         ];
 
-        $subDay = ['week', 'weekly', '1W', 'month', 'monthly', '1M', '3M', 'quarter', 'quarterly', '6M', 'half-year', 'year', 'yearly'];
+        $subDay = ['week', 'weekly', '1W', 'month', 'monthly', '1M', '3M', 'quarter', 'quarterly', '6M', 'half-year', 'half_year', '1Y', 'year', 'yearly'];
 
         // if the range is custom, the end of the period
         // is another X days (x is the difference between start)
@@ -193,21 +215,24 @@ class Navigation
 
 
         if (!isset($functionMap[$repeatFreq])) {
-            throw new FireflyException(sprintf('Cannot do endOfPeriod for $repeat_freq "%s"', $repeatFreq));
+            Log::error(sprintf('Cannot do endOfPeriod for $repeat_freq "%s"', $repeatFreq));
+
+            return $end;
         }
         $function = $functionMap[$repeatFreq];
 
         if (isset($modifierMap[$repeatFreq])) {
             $currentEnd->$function($modifierMap[$repeatFreq]);
-
-            if (\in_array($repeatFreq, $subDay, true)) {
+            if (in_array($repeatFreq, $subDay, true)) {
                 $currentEnd->subDay();
             }
+            $currentEnd->endOfDay();
 
             return $currentEnd;
         }
         $currentEnd->$function();
-        if (\in_array($repeatFreq, $subDay, true)) {
+        $currentEnd->endOfDay();
+        if (in_array($repeatFreq, $subDay, true)) {
             $currentEnd->subDay();
         }
 
@@ -262,10 +287,11 @@ class Navigation
      */
     public function listOfPeriods(Carbon $start, Carbon $end): array
     {
+        $locale = app('steam')->getLocale();
         // define period to increment
         $increment     = 'addDay';
         $format        = $this->preferredCarbonFormat($start, $end);
-        $displayFormat = (string)trans('config.month_and_day');
+        $displayFormat = (string)trans('config.month_and_day', [], $locale);
         // increment by month (for year)
         if ($start->diffInMonths($end) > 1) {
             $increment     = 'addMonth';
@@ -278,13 +304,13 @@ class Navigation
             $displayFormat = (string)trans('config.year');
         }
 
+
         $begin   = clone $start;
         $entries = [];
         while ($begin < $end) {
             $formatted           = $begin->format($format);
             $displayed           = $begin->formatLocalized($displayFormat);
             $entries[$formatted] = $displayed;
-
             $begin->$increment();
         }
 
@@ -293,11 +319,9 @@ class Navigation
 
     /**
      * @param \Carbon\Carbon $theDate
-     * @param  string        $repeatFrequency
+     * @param string         $repeatFrequency
      *
      * @return string
-     *
-     * @throws \FireflyIII\Exceptions\FireflyException
      */
     public function periodShow(\Carbon\Carbon $theDate, string $repeatFrequency): string
     {
@@ -328,7 +352,10 @@ class Navigation
         }
 
         // special formatter for quarter of year
-        throw new FireflyException(sprintf('No date formats for frequency "%s"!', $repeatFrequency));
+        Log::error(sprintf('No date formats for frequency "%s"!', $repeatFrequency));
+
+        return $date->format('Y-m-d');
+
     }
 
     /**
@@ -365,13 +392,14 @@ class Navigation
      */
     public function preferredCarbonLocalizedFormat(Carbon $start, Carbon $end): string
     {
-        $format = (string)trans('config.month_and_day');
+        $locale = app('steam')->getLocale();
+        $format = (string)trans('config.month_and_day', [], $locale);
         if ($start->diffInMonths($end) > 1) {
-            $format = (string)trans('config.month');
+            $format = (string)trans('config.month', [], $locale);
         }
 
         if ($start->diffInMonths($end) > 12) {
-            $format = (string)trans('config.year');
+            $format = (string)trans('config.year', [], $locale);
         }
 
         return $format;
@@ -451,8 +479,6 @@ class Navigation
      * @param                $repeatFreq
      *
      * @return \Carbon\Carbon
-     *
-     * @throws \FireflyIII\Exceptions\FireflyException
      */
     public function startOfPeriod(Carbon $theDate, string $repeatFreq): Carbon
     {
@@ -493,8 +519,10 @@ class Navigation
         if ('custom' === $repeatFreq) {
             return $date; // the date is already at the start.
         }
+        Log::error(sprintf('Cannot do startOfPeriod for $repeat_freq "%s"', $repeatFreq));
 
-        throw new FireflyException(sprintf('Cannot do startOfPeriod for $repeat_freq "%s"', $repeatFreq));
+        return $theDate;
+
     }
 
     /**
@@ -511,7 +539,6 @@ class Navigation
         $subtract = $subtract ?? 1;
         $date     = clone $theDate;
         // 1D 1W 1M 3M 6M 1Y
-        Log::debug(sprintf('subtractPeriod: date is %s, repeat frequency is %s and subtract is %d', $date->format('Y-m-d'), $repeatFreq, $subtract));
         $functionMap = [
             '1D'      => 'subDays',
             'daily'   => 'subDays',
@@ -535,16 +562,12 @@ class Navigation
         if (isset($functionMap[$repeatFreq])) {
             $function = $functionMap[$repeatFreq];
             $date->$function($subtract);
-            Log::debug(sprintf('%s is in function map, execute %s with argument %d', $repeatFreq, $function, $subtract));
-            Log::debug(sprintf('subtractPeriod: resulting date is %s', $date->format('Y-m-d')));
 
             return $date;
         }
         if (isset($modifierMap[$repeatFreq])) {
             $subtract *= $modifierMap[$repeatFreq];
             $date->subMonths($subtract);
-            Log::debug(sprintf('%s is in modifier map with value %d, execute subMonths with argument %d', $repeatFreq, $modifierMap[$repeatFreq], $subtract));
-            Log::debug(sprintf('subtractPeriod: resulting date is %s', $date->format('Y-m-d')));
 
             return $date;
         }
@@ -557,10 +580,8 @@ class Navigation
             /** @var Carbon $tEnd */
             $tEnd       = session('end', Carbon::now()->endOfMonth());
             $diffInDays = $tStart->diffInDays($tEnd);
-            Log::debug(sprintf('repeatFreq is %s, start is %s and end is %s (session data).', $repeatFreq, $tStart->format('Y-m-d'), $tEnd->format('Y-m-d')));
-            Log::debug(sprintf('Diff in days is %d', $diffInDays));
             $date->subDays($diffInDays * $subtract);
-            Log::debug(sprintf('subtractPeriod: resulting date is %s', $date->format('Y-m-d')));
+
 
             return $date;
         }
@@ -583,7 +604,6 @@ class Navigation
             '1W'     => 'endOfWeek',
             '1M'     => 'endOfMonth',
             '3M'     => 'lastOfQuarter',
-            '1Y'     => 'endOfYear',
             'custom' => 'startOfMonth', // this only happens in test situations.
         ];
         $end         = clone $start;
@@ -604,6 +624,16 @@ class Navigation
 
             return $end;
         }
+
+        // make sure 1Y takes the fiscal year into account.
+        if ('1Y' === $range) {
+            /** @var FiscalHelperInterface $fiscalHelper */
+            $fiscalHelper = app(FiscalHelperInterface::class);
+
+            return $fiscalHelper->endOfFiscalYear($end);
+        }
+
+
         throw new FireflyException(sprintf('updateEndDate cannot handle range "%s"', $range));
     }
 
@@ -622,7 +652,6 @@ class Navigation
             '1W'     => 'startOfWeek',
             '1M'     => 'startOfMonth',
             '3M'     => 'firstOfQuarter',
-            '1Y'     => 'startOfYear',
             'custom' => 'startOfMonth', // this only happens in test situations.
         ];
         if (isset($functionMap[$range])) {
@@ -641,6 +670,15 @@ class Navigation
 
             return $start;
         }
+
+        // make sure 1Y takes the fiscal year into account.
+        if ('1Y' === $range) {
+            /** @var FiscalHelperInterface $fiscalHelper */
+            $fiscalHelper = app(FiscalHelperInterface::class);
+
+            return $fiscalHelper->startOfFiscalYear($start);
+        }
+
         throw new FireflyException(sprintf('updateStartDate cannot handle range "%s"', $range));
     }
 }

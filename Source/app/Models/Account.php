@@ -1,71 +1,98 @@
 <?php
 /**
  * Account.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Models;
 
 use Carbon\Carbon;
-use Crypt;
-use FireflyIII\Exceptions\FireflyException;
+use Eloquent;
 use FireflyIII\User;
-use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
-use Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Class Account.
+ * Class Account
  *
- * @property int         $id
- * @property string      $name
- * @property string      $iban
- * @property AccountType $accountType
- * @property bool        $active
- * @property string      $virtual_balance
- * @property User        $user
- * @property string      startBalance
- * @property string      endBalance
- * @property string      difference
- * @property Carbon      lastActivityDate
- * @property Collection  accountMeta
- * @property bool        encrypted
- * @property int         account_type_id
- * @property Collection  piggyBanks
- * @property string      $interest
- * @property string      $interestPeriod
- * @property string      accountTypeString
- * @property Carbon      created_at
- * @property Carbon      updated_at
- *
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+ * @property int $id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property int $user_id
+ * @property int $account_type_id
+ * @property string $name
+ * @property string|null $virtual_balance
+ * @property string|null $iban
+ * @property bool $active
+ * @property bool $encrypted
+ * @property int $order
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\AccountMeta[] $accountMeta
+ * @property-read int|null $account_meta_count
+ * @property-read \FireflyIII\Models\AccountType $accountType
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\Attachment[] $attachments
+ * @property-read int|null $attachments_count
+ * @property-read string $account_number
+ * @property-read string $edit_name
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\Location[] $locations
+ * @property-read int|null $locations_count
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\Note[] $notes
+ * @property-read int|null $notes_count
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\ObjectGroup[] $objectGroups
+ * @property-read int|null $object_groups_count
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\PiggyBank[] $piggyBanks
+ * @property-read int|null $piggy_banks_count
+ * @property-read \Illuminate\Database\Eloquent\Collection|\FireflyIII\Models\Transaction[] $transactions
+ * @property-read int|null $transactions_count
+ * @property-read User $user
+ * @method static EloquentBuilder|Account accountTypeIn($types)
+ * @method static EloquentBuilder|Account newModelQuery()
+ * @method static EloquentBuilder|Account newQuery()
+ * @method static Builder|Account onlyTrashed()
+ * @method static EloquentBuilder|Account query()
+ * @method static EloquentBuilder|Account whereAccountTypeId($value)
+ * @method static EloquentBuilder|Account whereActive($value)
+ * @method static EloquentBuilder|Account whereCreatedAt($value)
+ * @method static EloquentBuilder|Account whereDeletedAt($value)
+ * @method static EloquentBuilder|Account whereEncrypted($value)
+ * @method static EloquentBuilder|Account whereIban($value)
+ * @method static EloquentBuilder|Account whereId($value)
+ * @method static EloquentBuilder|Account whereName($value)
+ * @method static EloquentBuilder|Account whereOrder($value)
+ * @method static EloquentBuilder|Account whereUpdatedAt($value)
+ * @method static EloquentBuilder|Account whereUserId($value)
+ * @method static EloquentBuilder|Account whereVirtualBalance($value)
+ * @method static Builder|Account withTrashed()
+ * @method static Builder|Account withoutTrashed()
+ * @mixin Eloquent
  */
 class Account extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, HasFactory;
 
     /**
      * The attributes that should be casted to native types.
@@ -76,6 +103,7 @@ class Account extends Model
         = [
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'user_id'    => 'integer',
             'deleted_at' => 'datetime',
             'active'     => 'boolean',
             'encrypted'  => 'boolean',
@@ -92,13 +120,13 @@ class Account extends Model
      *
      * @param string $value
      *
-     * @return Account
      * @throws NotFoundHttpException
+     * @return Account
      */
     public static function routeBinder(string $value): Account
     {
         if (auth()->check()) {
-            $accountId = (int)$value;
+            $accountId = (int) $value;
             /** @var User $user */
             $user = auth()->user();
             /** @var Account $account */
@@ -108,6 +136,23 @@ class Account extends Model
             }
         }
         throw new NotFoundHttpException;
+    }
+
+    /**
+     * Get all of the tags for the post.
+     */
+    public function objectGroups()
+    {
+        return $this->morphToMany(ObjectGroup::class, 'object_groupable');
+    }
+
+    /**
+     * @codeCoverageIgnore
+     * @return MorphMany
+     */
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
     }
 
     /**
@@ -129,6 +174,21 @@ class Account extends Model
     }
 
     /**
+     * Get the account number.
+     *
+     * @return string
+     */
+    public function getAccountNumberAttribute(): string
+    {
+        /** @var AccountMeta $metaValue */
+        $metaValue = $this->accountMeta()
+                          ->where('name', 'account_number')
+                          ->first();
+
+        return $metaValue ? $metaValue->data : '';
+    }
+
+    /**
      * @return string
      * @codeCoverageIgnore
      */
@@ -144,64 +204,12 @@ class Account extends Model
     }
 
     /**
-     * @param $value
-     *
-     * @return string
-     *
-     * @throws FireflyException
-     */
-    public function getIbanAttribute($value): string
-    {
-        if ('' === (string)$value) {
-            return '';
-        }
-        try {
-            $result = Crypt::decrypt($value);
-        } catch (DecryptException $e) {
-            Log::error($e->getMessage());
-            Log::error($e->getTraceAsString());
-            throw new FireflyException('Cannot decrypt value "' . $value . '" for account #' . $this->id);
-        }
-        if (null === $result) {
-            return '';
-        }
-
-        return $result;
-    }
-
-    /**
      * @codeCoverageIgnore
-     *
-     * @param $value
-     *
-     * @return string
-     * @throws \Illuminate\Contracts\Encryption\DecryptException
+     * @return MorphMany
      */
-    public function getNameAttribute($value): ?string
+    public function locations(): MorphMany
     {
-        if ($this->encrypted) {
-            return Crypt::decrypt($value);
-        }
-
-        return $value;
-    }
-
-    /**
-     * Returns the opening balance.
-     *
-     * @return TransactionJournal
-     */
-    public function getOpeningBalance(): TransactionJournal
-    {
-        $journal = TransactionJournal::leftJoin('transactions', 'transactions.transaction_journal_id', '=', 'transaction_journals.id')
-                                     ->where('transactions.account_id', $this->id)
-                                     ->transactionTypes([TransactionType::OPENING_BALANCE])
-                                     ->first(['transaction_journals.*']);
-        if (null === $journal) {
-            return new TransactionJournal;
-        }
-
-        return $journal;
+        return $this->morphMany(Location::class, 'locatable');
     }
 
     /**
@@ -238,31 +246,6 @@ class Account extends Model
     }
 
     /**
-     * @param $value
-     *
-     * @codeCoverageIgnore
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setIbanAttribute($value): void
-    {
-        $this->attributes['iban'] = Crypt::encrypt($value);
-    }
-
-    /**
-     * @codeCoverageIgnore
-     *
-     * @param $value
-     *
-     * @throws \Illuminate\Contracts\Encryption\EncryptException
-     */
-    public function setNameAttribute($value): void
-    {
-        $encrypt                       = config('firefly.encryption');
-        $this->attributes['name']      = $encrypt ? Crypt::encrypt($value) : $value;
-        $this->attributes['encrypted'] = $encrypt;
-    }
-
-    /**
      * @codeCoverageIgnore
      *
      * @param $value
@@ -271,7 +254,11 @@ class Account extends Model
      */
     public function setVirtualBalanceAttribute($value): void
     {
-        $this->attributes['virtual_balance'] = (string)$value;
+        $value = (string)$value;
+        if('' === $value) {
+            $value = null;
+        }
+        $this->attributes['virtual_balance'] = $value;
     }
 
     /**

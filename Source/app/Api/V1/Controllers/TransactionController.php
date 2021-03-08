@@ -2,65 +2,75 @@
 
 /**
  * TransactionController.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 namespace FireflyIII\Api\V1\Controllers;
 
-use FireflyIII\Api\V1\Requests\TransactionRequest;
-use FireflyIII\Events\StoredTransactionJournal;
-use FireflyIII\Events\UpdatedTransactionJournal;
+use FireflyIII\Api\V1\Requests\TransactionStoreRequest;
+use FireflyIII\Api\V1\Requests\TransactionUpdateRequest;
+use FireflyIII\Events\DestroyedTransactionGroup;
+use FireflyIII\Events\StoredTransactionGroup;
+use FireflyIII\Events\UpdatedTransactionGroup;
+use FireflyIII\Exceptions\DuplicateTransactionException;
 use FireflyIII\Exceptions\FireflyException;
-use FireflyIII\Helpers\Collector\TransactionCollectorInterface;
-use FireflyIII\Helpers\Filter\InternalTransferFilter;
-use FireflyIII\Helpers\Filter\NegativeAmountFilter;
-use FireflyIII\Helpers\Filter\PositiveAmountFilter;
-use FireflyIII\Models\Transaction;
-use FireflyIII\Models\TransactionType;
+use FireflyIII\Helpers\Collector\GroupCollectorInterface;
+use FireflyIII\Models\TransactionGroup;
+use FireflyIII\Models\TransactionJournal;
+use FireflyIII\Repositories\Journal\JournalAPIRepositoryInterface;
 use FireflyIII\Repositories\Journal\JournalRepositoryInterface;
+use FireflyIII\Repositories\TransactionGroup\TransactionGroupRepositoryInterface;
+use FireflyIII\Rules\IsDuplicateTransaction;
 use FireflyIII\Support\Http\Api\TransactionFilter;
 use FireflyIII\Transformers\AttachmentTransformer;
 use FireflyIII\Transformers\PiggyBankEventTransformer;
-use FireflyIII\Transformers\TransactionTransformer;
+use FireflyIII\Transformers\TransactionGroupTransformer;
+use FireflyIII\Transformers\TransactionLinkTransformer;
 use FireflyIII\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use League\Fractal\Manager;
+use Illuminate\Validation\ValidationException;
 use League\Fractal\Pagination\IlluminatePaginatorAdapter;
 use League\Fractal\Resource\Collection as FractalCollection;
-use League\Fractal\Serializer\JsonApiSerializer;
+use League\Fractal\Resource\Item;
+use Log;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Validator;
 
 /**
  * Class TransactionController
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
 class TransactionController extends Controller
 {
     use TransactionFilter;
 
-    /** @var JournalRepositoryInterface The journal repository */
-    private $repository;
+    private TransactionGroupRepositoryInterface $groupRepository;
+    private JournalAPIRepositoryInterface       $journalAPIRepository;
+    private JournalRepositoryInterface          $repository;
+
 
     /**
      * TransactionController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -70,9 +80,12 @@ class TransactionController extends Controller
                 /** @var User $admin */
                 $admin = auth()->user();
 
-                /** @var JournalRepositoryInterface repository */
-                $this->repository = app(JournalRepositoryInterface::class);
+                $this->repository           = app(JournalRepositoryInterface::class);
+                $this->groupRepository      = app(TransactionGroupRepositoryInterface::class);
+                $this->journalAPIRepository = app(JournalAPIRepositoryInterface::class);
                 $this->repository->setUser($admin);
+                $this->groupRepository->setUser($admin);
+                $this->journalAPIRepository->setUser($admin);
 
                 return $next($request);
             }
@@ -80,18 +93,18 @@ class TransactionController extends Controller
     }
 
     /**
-     * @param Request     $request
-     * @param Transaction $transaction
+     * @param TransactionGroup $transactionGroup
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function attachments(Request $request, Transaction $transaction): JsonResponse
+    public function attachments(TransactionGroup $transactionGroup): JsonResponse
     {
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
-        $attachments = $this->repository->getAttachmentsByTr($transaction);
+        $manager     = $this->getManager();
+        $attachments = new Collection;
+        foreach ($transactionGroup->transactionJournals as $transactionJournal) {
+            $attachments = $this->journalAPIRepository->getAttachments($transactionJournal)->merge($attachments);
+        }
 
         /** @var AttachmentTransformer $transformer */
         $transformer = app(AttachmentTransformer::class);
@@ -99,21 +112,57 @@ class TransactionController extends Controller
 
         $resource = new FractalCollection($attachments, $transformer, 'attachments');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
+    }
 
+    /**
+     * @param TransactionJournal $transactionJournal
+     *
+     * @return JsonResponse
+     * @codeCoverageIgnore
+     */
+    public function transactionLinks(TransactionJournal $transactionJournal): JsonResponse
+    {
+        $manager      = $this->getManager();
+        $journalLinks = $this->journalAPIRepository->getJournalLinks($transactionJournal);
+
+        /** @var TransactionLinkTransformer $transformer */
+        $transformer = app(TransactionLinkTransformer::class);
+        $transformer->setParameters($this->parameters);
+
+        $resource = new FractalCollection($journalLinks, $transformer, 'transaction_links');
+
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \FireflyIII\Models\Transaction $transaction
+     * @param TransactionGroup $transactionGroup
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function delete(Transaction $transaction): JsonResponse
+    public function delete(TransactionGroup $transactionGroup): JsonResponse
     {
-        $journal = $transaction->transactionJournal;
-        $this->repository->destroy($journal);
+        $this->repository->destroyGroup($transactionGroup);
+        // trigger just after destruction
+        event(new DestroyedTransactionGroup($transactionGroup));
+
+        return response()->json([], 204);
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param TransactionJournal $transactionJournal
+     *
+     * @codeCoverageIgnore
+     * @return JsonResponse
+     */
+    public function deleteJournal(TransactionJournal $transactionJournal): JsonResponse
+    {
+        $this->repository->destroyJournal($transactionJournal);
 
         return response()->json([], 204);
     }
@@ -124,6 +173,7 @@ class TransactionController extends Controller
      * @param Request $request
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
     public function index(Request $request): JsonResponse
     {
@@ -132,54 +182,55 @@ class TransactionController extends Controller
         $this->parameters->set('type', $type);
 
         $types   = $this->mapTransactionTypes($this->parameters->get('type'));
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
+        $manager = $this->getManager();
         /** @var User $admin */
         $admin = auth()->user();
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($admin);
-        $collector->withOpposingAccount()->withCategoryInformation()->withBudgetInformation();
-        $collector->setAllAssetAccounts();
 
-        if (\in_array(TransactionType::TRANSFER, $types, true)) {
-            $collector->removeFilter(InternalTransferFilter::class);
-        }
+        // use new group collector:
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector
+            ->setUser($admin)
+            // all info needed for the API:
+            ->withAPIInformation()
+            // set page size:
+            ->setLimit($pageSize)
+            // set page to retrieve
+            ->setPage($this->parameters->get('page'))
+            // set types of transactions to return.
+            ->setTypes($types);
+
 
         if (null !== $this->parameters->get('start') && null !== $this->parameters->get('end')) {
             $collector->setRange($this->parameters->get('start'), $this->parameters->get('end'));
         }
-        $collector->setLimit($pageSize)->setPage($this->parameters->get('page'));
-        $collector->setTypes($types);
-        $paginator = $collector->getPaginatedTransactions();
+        $paginator = $collector->getPaginatedGroups();
         $paginator->setPath(route('api.v1.transactions.index') . $this->buildParams());
         $transactions = $paginator->getCollection();
 
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new FractalCollection($transactions, $transformer, 'transactions');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
-     * @param Request     $request
-     * @param Transaction $transaction
+     * @param TransactionGroup $transactionGroup
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function piggyBankEvents(Request $request, Transaction $transaction): JsonResponse
+    public function piggyBankEvents(TransactionGroup $transactionGroup): JsonResponse
     {
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
-        $events = $this->repository->getPiggyBankEventsByTr($transaction);
+        $manager = $this->getManager();
+        $events  = new Collection;
+        foreach ($transactionGroup->transactionJournals as $transactionJournal) {
+            $events = $this->journalAPIRepository->getPiggyBankEvents($transactionJournal)->merge($events);
+        }
 
         /** @var PiggyBankEventTransformer $transformer */
         $transformer = app(PiggyBankEventTransformer::class);
@@ -187,145 +238,157 @@ class TransactionController extends Controller
 
         $resource = new FractalCollection($events, $transformer, 'piggy_bank_events');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
+    }
 
+    /**
+     * Show a single transaction, by transaction journal.
+     *
+     * @param TransactionJournal $transactionJournal
+     *
+     * @return JsonResponse
+     * @codeCoverageIgnore
+     */
+    public function showByJournal(TransactionJournal $transactionJournal): JsonResponse
+    {
+        return $this->show($transactionJournal->transactionGroup);
     }
 
     /**
      * Show a single transaction.
      *
-     * @param Request     $request
-     * @param Transaction $transaction
+     * @param TransactionGroup $transactionGroup
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function show(Request $request, Transaction $transaction): JsonResponse
+    public function show(TransactionGroup $transactionGroup): JsonResponse
     {
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager = $this->getManager();
+        /** @var User $admin */
+        $admin = auth()->user();
+        // use new group collector:
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector
+            ->setUser($admin)
+            // filter on transaction group.
+            ->setTransactionGroup($transactionGroup)
+            // all info needed for the API:
+            ->withAPIInformation();
 
-        // collect transactions using the journal collector
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser(auth()->user());
-        $collector->withOpposingAccount()->withCategoryInformation()->withBudgetInformation();
-        // filter on specific journals.
-        $collector->setJournals(new Collection([$transaction->transactionJournal]));
-
-        // add filter to remove transactions:
-        $transactionType = $transaction->transactionJournal->transactionType->type;
-        if ($transactionType === TransactionType::WITHDRAWAL) {
-            $collector->addFilter(PositiveAmountFilter::class);
+        $selectedGroup = $collector->getGroups()->first();
+        if (null === $selectedGroup) {
+            throw new NotFoundHttpException();
         }
-        if (!($transactionType === TransactionType::WITHDRAWAL)) {
-            $collector->addFilter(NegativeAmountFilter::class); // @codeCoverageIgnore
-        }
-
-        $transactions = $collector->getTransactions();
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
-        $resource = new FractalCollection($transactions, $transformer, 'transactions');
+        $resource = new Item($selectedGroup, $transformer, 'transactions');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
      * Store a new transaction.
      *
-     * @param TransactionRequest         $request
+     * @param TransactionStoreRequest $request
      *
-     * @param JournalRepositoryInterface $repository
-     *
-     * @throws FireflyException
      * @return JsonResponse
+     * @throws FireflyException|ValidationException
      */
-    public function store(TransactionRequest $request, JournalRepositoryInterface $repository): JsonResponse
+    public function store(TransactionStoreRequest $request): JsonResponse
     {
+        Log::debug('Now in API TransactionController::store()');
         $data         = $request->getAll();
         $data['user'] = auth()->user()->id;
-        $journal      = $repository->store($data);
 
-        event(new StoredTransactionJournal($journal, 0));
+        Log::channel('audit')
+           ->info('Store new transaction over API.', $data);
 
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
-        // collect transactions using the journal collector
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser(auth()->user());
-        $collector->withOpposingAccount()->withCategoryInformation()->withBudgetInformation();
-        // filter on specific journals.
-        $collector->setJournals(new Collection([$journal]));
-
-        // add filter to remove transactions:
-        $transactionType = $journal->transactionType->type;
-        if ($transactionType === TransactionType::WITHDRAWAL) {
-            $collector->addFilter(PositiveAmountFilter::class);
+        try {
+            $transactionGroup = $this->groupRepository->store($data);
+        } catch (DuplicateTransactionException $e) {
+            Log::warning('Caught a duplicate transaction. Return error message.');
+            $validator = Validator::make(
+                ['transactions' => [['description' => $e->getMessage()]]], ['transactions.0.description' => new IsDuplicateTransaction]
+            );
+            throw new ValidationException($validator);
+        } catch (FireflyException $e) {
+            Log::warning('Caught an exception. Return error message.');
+            Log::error($e->getMessage());
+            $message   = sprintf('Internal exception: %s', $e->getMessage());
+            $validator = Validator::make(['transactions' => [['description' => $message]]], ['transactions.0.description' => new IsDuplicateTransaction]);
+            throw new ValidationException($validator);
         }
-        if (!($transactionType === TransactionType::WITHDRAWAL)) {
-            $collector->addFilter(NegativeAmountFilter::class);
+        app('preferences')->mark();
+        event(new StoredTransactionGroup($transactionGroup, $data['apply_rules'] ?? true));
+
+        $manager = $this->getManager();
+        /** @var User $admin */
+        $admin = auth()->user();
+        // use new group collector:
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector
+            ->setUser($admin)
+            // filter on transaction group.
+            ->setTransactionGroup($transactionGroup)
+            // all info needed for the API:
+            ->withAPIInformation();
+
+        $selectedGroup = $collector->getGroups()->first();
+        if (null === $selectedGroup) {
+            throw new FireflyException('Cannot find transaction. Possibly, a rule deleted this transaction after its creation.');
         }
-
-        $transactions = $collector->getTransactions();
-
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
+        $resource = new Item($selectedGroup, $transformer, 'transactions');
 
-        $resource = new FractalCollection($transactions, $transformer, 'transactions');
-
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
 
     /**
      * Update a transaction.
      *
-     * @param TransactionRequest         $request
-     * @param JournalRepositoryInterface $repository
-     * @param Transaction                $transaction
+     * @param TransactionUpdateRequest $request
+     * @param TransactionGroup         $transactionGroup
      *
      * @return JsonResponse
      */
-    public function update(TransactionRequest $request, JournalRepositoryInterface $repository, Transaction $transaction): JsonResponse
+    public function update(TransactionUpdateRequest $request, TransactionGroup $transactionGroup): JsonResponse
     {
-        $data         = $request->getAll();
-        $data['user'] = auth()->user()->id;
-        $journal      = $repository->update($transaction->transactionJournal, $data);
-        $manager      = new Manager();
-        $baseUrl      = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        Log::debug('Now in update routine.');
+        $data             = $request->getAll();
+        $transactionGroup = $this->groupRepository->update($transactionGroup, $data);
+        $manager          = $this->getManager();
 
-        event(new UpdatedTransactionJournal($journal));
+        app('preferences')->mark();
+        event(new UpdatedTransactionGroup($transactionGroup, $data['apply_rules'] ?? true));
 
-        // needs a lot of extra data to match the journal collector. Or just expand that one.
-        // collect transactions using the journal collector
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser(auth()->user());
-        $collector->withOpposingAccount()->withCategoryInformation()->withBudgetInformation();
-        // filter on specific journals.
-        $collector->setJournals(new Collection([$journal]));
+        /** @var User $admin */
+        $admin = auth()->user();
+        // use new group collector:
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector
+            ->setUser($admin)
+            // filter on transaction group.
+            ->setTransactionGroup($transactionGroup)
+            // all info needed for the API:
+            ->withAPIInformation();
 
-        // add filter to remove transactions:
-        $transactionType = $journal->transactionType->type;
-        if ($transactionType === TransactionType::WITHDRAWAL) {
-            $collector->addFilter(PositiveAmountFilter::class);
+        $selectedGroup = $collector->getGroups()->first();
+        if (null === $selectedGroup) {
+            throw new NotFoundHttpException(); // @codeCoverageIgnore
         }
-        if (!($transactionType === TransactionType::WITHDRAWAL)) {
-            $collector->addFilter(NegativeAmountFilter::class);
-        }
-
-        $transactions = $collector->getTransactions();
-
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
+        $resource = new Item($selectedGroup, $transformer, 'transactions');
 
-        $resource = new FractalCollection($transactions, $transformer, 'transactions');
-
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
-
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 }

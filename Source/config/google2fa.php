@@ -1,30 +1,27 @@
 <?php
-
 /**
  * google2fa.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org.
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
-
 return [
-
     /*
      * Auth container binding
      */
@@ -74,12 +71,12 @@ return [
     /*
      * User's table column for google2fa secret
      */
-    'otp_secret_column'    => 'google2fa_secret',
+    'otp_secret_column'    => 'mfa_secret',
 
     /*
      * One Time Password View
      */
-    'view'                 => 'google2fa.index',
+    'view'                 => 'auth.mfa',
 
     /*
      * One Time Password error message
@@ -87,5 +84,12 @@ return [
     'error_messages'       => [
         'wrong_otp' => "The 'One Time Password' typed was wrong.",
     ],
+
+    /*
+     * Throw exceptions or just fire events?
+     */
+    'throw_exceptions'     => true,
+
+    'store_in_cookie' => true,
 
 ];

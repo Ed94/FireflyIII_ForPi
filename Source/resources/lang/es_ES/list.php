@@ -2,22 +2,22 @@
 
 /**
  * list.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -34,16 +34,20 @@ return [
     'name'                    => 'Nombre',
     'role'                    => 'Rol',
     'currentBalance'          => 'Balance actual',
-    'linked_to_rules'         => 'Relevant rules',
+    'linked_to_rules'         => 'Reglas asociadas',
     'active'                  => '¿Está Activo?',
+    'percentage'              => 'pct.',
+    'recurring_transaction'   => 'Transacción Recurrente',
+    'next_due'                => 'Próxima vez',
+    'transaction_type'        => 'Tipo',
     'lastActivity'            => 'Actividad más reciente',
-    'balanceDiff'             => 'Diferencia de equilibrio',
-    'matchesOn'               => 'Encontrado en',
+    'balanceDiff'             => 'Diferencia de saldo',
+    'other_meta_data'         => 'Otros metadatos',
     'account_type'            => 'Tipo de cuenta',
     'created_at'              => 'Fecha de creación',
     'account'                 => 'Cuenta',
-    'matchingAmount'          => 'Monto',
-    'split_number'            => 'División #',
+    'external_uri'            => 'URI externa',
+    'matchingAmount'          => 'Cantidad',
     'destination'             => 'Destino',
     'source'                  => 'Origen',
     'next_expected_match'     => 'Próxima coincidencia esperada',
@@ -51,7 +55,6 @@ return [
     'repeat_freq'             => 'Repetición:',
     'description'             => 'Descripción',
     'amount'                  => 'Monto',
-    'internal_reference'      => 'Referencia interna',
     'date'                    => 'Fecha',
     'interest_date'           => 'Tasa de interés',
     'book_date'               => 'Libro fecha',
@@ -59,7 +62,7 @@ return [
     'due_date'                => 'Fecha de vencimiento',
     'payment_date'            => 'Fecha de pago',
     'invoice_date'            => 'Fecha de facturación',
-    'interal_reference'       => 'Referencia interna',
+    'internal_reference'      => 'Referencia interna',
     'notes'                   => 'Notas',
     'from'                    => 'Desde',
     'piggy_bank'              => 'Alcancilla',
@@ -87,8 +90,6 @@ return [
     'attachments_count'       => 'Núm. de datos adjuntos',
     'bills_count'             => 'Número de facturas',
     'categories_count'        => 'Número de categorías',
-    'export_jobs_count'       => 'Número de operaciones de exportación',
-    'import_jobs_count'       => 'Número de operaciones de importación',
     'budget_count'            => 'Número de presupuestos',
     'rule_and_groups_count'   => 'Número de reglas y grupos de reglas',
     'tags_count'              => 'Número de etiquetas',
@@ -102,20 +103,18 @@ return [
     'sum_withdrawals'         => 'Suma de retiros',
     'sum_deposits'            => 'Suma de depositos',
     'sum_transfers'           => 'Suma de transferencias',
+    'sum_reconciliations'     => 'Suma de reconciliaciones',
     'reconcile'               => 'Reconciliar',
-    'account_on_spectre'      => 'Cuenta (espectro)',
-    'account_on_ynab'         => 'Account (YNAB)',
-    'do_import'               => 'Importar desde esta cuenta',
-    'sepa-ct-id'              => 'SEPA End to End Identifier',
-    'sepa-ct-op'              => 'SEPA Opposing Account Identifier',
-    'sepa-db'                 => 'SEPA Mandate Identifier',
-    'sepa-country'            => 'SEPA Country',
-    'sepa-cc'                 => 'SEPA Clearing Code',
-    'sepa-ep'                 => 'SEPA External Purpose',
-    'sepa-ci'                 => 'SEPA Creditor Identifier',
-    'sepa-batch-id'           => 'SEPA Batch ID',
+    'sepa_ct_id'              => 'Identificador de extremo a extremo SEPA',
+    'sepa_ct_op'              => 'Identificador de cuenta opuesta SEPA',
+    'sepa_db'                 => 'Identificador de mandato SEPA',
+    'sepa_country'            => 'País SEPA',
+    'sepa_cc'                 => 'Código de limpieza SEPA',
+    'sepa_ep'                 => 'Propósito externo SEPA',
+    'sepa_ci'                 => 'Identificador de acreedor SEPA',
+    'sepa_batch_id'           => 'ID de lote SEPA',
     'external_id'             => 'ID Externo',
-    'account_at_bunq'         => 'Account with bunq',
+    'account_at_bunq'         => 'Cuenta con bunq',
     'file_name'               => 'Nombre de fichero',
     'file_size'               => 'Tamaño de fichero',
     'file_type'               => 'Tipo de fichero',
@@ -124,13 +123,13 @@ return [
     'spectre_bank'            => 'Banco',
     'spectre_last_use'        => 'Ultimó acceso',
     'spectre_status'          => 'Estado',
-    'bunq_payment_id'         => 'bunq payment ID',
+    'bunq_payment_id'         => 'ID de pago bunq',
     'repetitions'             => 'Repeticiones',
     'title'                   => 'Título',
-    'transaction_s'           => 'Transaction(s)',
+    'transaction_s'           => 'Transacción(es)',
     'field'                   => 'Campo',
     'value'                   => 'Valor',
     'interest'                => 'Interés',
-    'interest_period'         => 'interest period',
-    'liability_type'          => 'Type of liability',
+    'interest_period'         => 'período de interés',
+    'liability_type'          => 'Tipo de pasivo',
 ];

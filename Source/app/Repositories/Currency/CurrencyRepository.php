@@ -1,33 +1,38 @@
 <?php
 /**
  * CurrencyRepository.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Repositories\Currency;
 
 use Carbon\Carbon;
+use FireflyIII\Exceptions\FireflyException;
 use FireflyIII\Factory\TransactionCurrencyFactory;
 use FireflyIII\Models\AccountMeta;
+use FireflyIII\Models\AvailableBudget;
+use FireflyIII\Models\Bill;
 use FireflyIII\Models\BudgetLimit;
 use FireflyIII\Models\CurrencyExchangeRate;
 use FireflyIII\Models\Preference;
+use FireflyIII\Models\RecurrenceTransaction;
+use FireflyIII\Models\Transaction;
 use FireflyIII\Models\TransactionCurrency;
 use FireflyIII\Repositories\User\UserRepositoryInterface;
 use FireflyIII\Services\Internal\Destroy\CurrencyDestroyService;
@@ -42,18 +47,7 @@ use Log;
  */
 class CurrencyRepository implements CurrencyRepositoryInterface
 {
-    /** @var User */
-    private $user;
-
-    /**
-     * Constructor.
-     */
-    public function __construct()
-    {
-        if ('testing' === config('app.env')) {
-            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', \get_class($this)));
-        }
-    }
+    private User $user;
 
     /**
      * @param TransactionCurrency $currency
@@ -62,7 +56,9 @@ class CurrencyRepository implements CurrencyRepositoryInterface
      */
     public function countJournals(TransactionCurrency $currency): int
     {
-        return $currency->transactions()->count();
+        $count = $currency->transactions()->whereNull('deleted_at')->count() + $currency->transactionJournals()->whereNull('deleted_at')->count();
+        // also count foreign:
+        return $count + Transaction::where('foreign_currency_id', $currency->id)->count();
     }
 
     /**
@@ -72,56 +68,97 @@ class CurrencyRepository implements CurrencyRepositoryInterface
      */
     public function currencyInUse(TransactionCurrency $currency): bool
     {
+        $result = $this->currencyInUseAt($currency);
+
+        return null !== $result;
+    }
+
+    /**
+     * @param TransactionCurrency $currency
+     *
+     * @return string|null
+     */
+    public function currencyInUseAt(TransactionCurrency $currency): ?string
+    {
         Log::debug(sprintf('Now in currencyInUse() for #%d ("%s")', $currency->id, $currency->code));
         $countJournals = $this->countJournals($currency);
         if ($countJournals > 0) {
-            Log::debug(sprintf('Count journals is %d, return true.', $countJournals));
+            Log::info(sprintf('Count journals is %d, return true.', $countJournals));
 
-            return true;
+            return 'journals';
         }
 
         // is the only currency left
         if (1 === $this->getAll()->count()) {
-            Log::debug('Is the last currency in the system, return true. ', $countJournals);
+            Log::info('Is the last currency in the system, return true. ');
 
-            return true;
+            return 'last_left';
         }
 
         // is being used in accounts:
         $meta = AccountMeta::where('name', 'currency_id')->where('data', json_encode((string)$currency->id))->count();
         if ($meta > 0) {
-            Log::debug(sprintf('Used in %d accounts as currency_id, return true. ', $meta));
+            Log::info(sprintf('Used in %d accounts as currency_id, return true. ', $meta));
 
-            return true;
+            return 'account_meta';
+        }
+
+        // is being used in bills:
+        $bills = Bill::where('transaction_currency_id', $currency->id)->count();
+        if ($bills > 0) {
+            Log::info(sprintf('Used in %d bills as currency, return true. ', $bills));
+
+            return 'bills';
+        }
+
+        // is being used in recurring transactions
+        $recurringAmount  = RecurrenceTransaction::where('transaction_currency_id', $currency->id)->count();
+        $recurringForeign = RecurrenceTransaction::where('foreign_currency_id', $currency->id)->count();
+
+        if ($recurringAmount > 0 || $recurringForeign > 0) {
+            Log::info(sprintf('Used in %d recurring transactions as (foreign) currency id, return true. ', $recurringAmount + $recurringForeign));
+
+            return 'recurring';
+        }
+
+        // is being used in accounts (as integer)
+        $meta = AccountMeta
+            ::leftJoin('accounts', 'accounts.id', '=', 'account_meta.account_id')
+            ->whereNull('accounts.deleted_at')
+            ->where('account_meta.name', 'currency_id')->where('account_meta.data', json_encode((int)$currency->id))->count();
+        if ($meta > 0) {
+            Log::info(sprintf('Used in %d accounts as currency_id, return true. ', $meta));
+
+            return 'account_meta';
+        }
+
+        // is being used in available budgets
+        $availableBudgets = AvailableBudget::where('transaction_currency_id', $currency->id)->count();
+        if ($availableBudgets > 0) {
+            Log::info(sprintf('Used in %d available budgets as currency, return true. ', $availableBudgets));
+
+            return 'available_budgets';
         }
 
         // is being used in budget limits
         $budgetLimit = BudgetLimit::where('transaction_currency_id', $currency->id)->count();
         if ($budgetLimit > 0) {
-            Log::debug(sprintf('Used in %d budget limits as currency, return true. ', $budgetLimit));
+            Log::info(sprintf('Used in %d budget limits as currency, return true. ', $budgetLimit));
 
-            return true;
+            return 'budget_limits';
         }
 
         // is the default currency for the user or the system
         $defaultCode = app('preferences')->getForUser($this->user, 'currencyPreference', config('firefly.default_currency', 'EUR'))->data;
         if ($currency->code === $defaultCode) {
-            Log::debug('Is the default currency of the user, return true.');
+            Log::info('Is the default currency of the user, return true.');
 
-            return true;
+            return 'current_default';
         }
 
-        // is the default currency for the system
-        $defaultSystemCode = config('firefly.default_currency', 'EUR');
-        $result            = $currency->code === $defaultSystemCode;
-        if (true === $result) {
-            Log::debug('Is the default currency of the SYSTEM, return true.');
-
-            return true;
-        }
         Log::debug('Currency is not used, return false.');
 
-        return false;
+        return null;
     }
 
     /**
@@ -195,8 +232,8 @@ class CurrencyRepository implements CurrencyRepositoryInterface
      *
      * @param string $currencyCode
      *
-     * @deprecated
      * @return TransactionCurrency|null
+     * @deprecated
      */
     public function findByCodeNull(string $currencyCode): ?TransactionCurrency
     {
@@ -221,8 +258,8 @@ class CurrencyRepository implements CurrencyRepositoryInterface
      *
      * @param string $currencyName
      *
-     * @deprecated
      * @return TransactionCurrency
+     * @deprecated
      */
     public function findByNameNull(string $currencyName): ?TransactionCurrency
     {
@@ -247,12 +284,66 @@ class CurrencyRepository implements CurrencyRepositoryInterface
      *
      * @param string $currencySymbol
      *
-     * @deprecated
      * @return TransactionCurrency
+     * @deprecated
      */
     public function findBySymbolNull(string $currencySymbol): ?TransactionCurrency
     {
         return TransactionCurrency::whereSymbol($currencySymbol)->first();
+    }
+
+    /**
+     * Find by object, ID or code. Returns user default or system default.
+     *
+     * @param int|null    $currencyId
+     * @param string|null $currencyCode
+     *
+     * @return TransactionCurrency
+     */
+    public function findCurrency(?int $currencyId, ?string $currencyCode): TransactionCurrency
+    {
+        $result = $this->findCurrencyNull($currencyId, $currencyCode);
+
+        if (null === $result) {
+            Log::debug('Grabbing default currency for this user...');
+            $result = app('amount')->getDefaultCurrencyByUser($this->user);
+        }
+
+        if (null === $result) {
+            Log::debug('Grabbing EUR as fallback.');
+            $result = $this->findByCode('EUR');
+        }
+        Log::debug(sprintf('Final result: %s', $result->code));
+        if (false === $result->enabled) {
+            Log::debug(sprintf('Also enabled currency %s', $result->code));
+            $this->enable($result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Find by object, ID or code. Returns NULL if nothing found.
+     *
+     * @param int|null    $currencyId
+     * @param string|null $currencyCode
+     *
+     * @return TransactionCurrency|null
+     */
+    public function findCurrencyNull(?int $currencyId, ?string $currencyCode): ?TransactionCurrency
+    {
+        Log::debug('Now in findCurrencyNull()');
+        $result = $this->find((int)$currencyId);
+        if (null === $result) {
+            Log::debug(sprintf('Searching for currency with code %s...', $currencyCode));
+            $result = $this->findByCode((string)$currencyCode);
+        }
+        if (null !== $result && false === $result->enabled) {
+            Log::debug(sprintf('Also enabled currency %s', $result->code));
+            $this->enable($result);
+        }
+
+        return $result;
     }
 
     /**
@@ -261,8 +352,8 @@ class CurrencyRepository implements CurrencyRepositoryInterface
      *
      * @param int $currencyId
      *
-     * @deprecated
      * @return TransactionCurrency|null
+     * @deprecated
      */
     public function findNull(int $currencyId): ?TransactionCurrency
     {
@@ -362,6 +453,22 @@ class CurrencyRepository implements CurrencyRepositoryInterface
     }
 
     /**
+     * @param string $search
+     * @param int $limit
+     *
+     * @return Collection
+     */
+    public function searchCurrency(string $search, int $limit): Collection
+    {
+        $query = TransactionCurrency::where('enabled', 1);
+        if ('' !== $search) {
+            $query->where('name', 'LIKE', sprintf('%%%s%%', $search));
+        }
+
+        return $query->take($limit)->get();
+    }
+
+    /**
      * @param User $user
      */
     public function setUser(User $user): void
@@ -372,14 +479,20 @@ class CurrencyRepository implements CurrencyRepositoryInterface
     /**
      * @param array $data
      *
-     * @return TransactionCurrency|null
+     * @return TransactionCurrency
+     * @throws FireflyException
      */
-    public function store(array $data): ?TransactionCurrency
+    public function store(array $data): TransactionCurrency
     {
         /** @var TransactionCurrencyFactory $factory */
         $factory = app(TransactionCurrencyFactory::class);
+        $result  = $factory->create($data);
 
-        return $factory->create($data);
+        if (null === $result) {
+            throw new FireflyException('400004: Could not store new currency.');
+        }
+
+        return $result;
     }
 
     /**
@@ -394,5 +507,13 @@ class CurrencyRepository implements CurrencyRepositoryInterface
         $service = app(CurrencyUpdateService::class);
 
         return $service->update($currency, $data);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function isFallbackCurrency(TransactionCurrency $currency): bool
+    {
+        return $currency->code === config('firefly.default_currency', 'EUR');
     }
 }

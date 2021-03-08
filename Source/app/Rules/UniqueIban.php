@@ -1,22 +1,22 @@
 <?php
 /**
  * UniqueIban.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
@@ -26,7 +26,6 @@ namespace FireflyIII\Rules;
 use FireflyIII\Models\Account;
 use FireflyIII\Models\AccountType;
 use Illuminate\Contracts\Validation\Rule;
-use Illuminate\Support\Collection;
 use Log;
 
 /**
@@ -34,14 +33,13 @@ use Log;
  */
 class UniqueIban implements Rule
 {
-    /** @var Account */
-    private $account;
-
-    /** @var string */
-    private $expectedType;
+    private ?Account $account;
+    private ?string $expectedType;
 
     /**
      * Create a new rule instance.
+     *
+     * @codeCoverageIgnore
      *
      * @param Account|null $account
      * @param string|null  $expectedType
@@ -50,10 +48,22 @@ class UniqueIban implements Rule
     {
         $this->account      = $account;
         $this->expectedType = $expectedType;
+        // a very basic fix to make sure we get the correct account type:
+        if ('expense' === $expectedType) {
+            $this->expectedType = AccountType::EXPENSE;
+        }
+        if ('revenue' === $expectedType) {
+            $this->expectedType = AccountType::REVENUE;
+        }
+        if ('asset' === $expectedType) {
+            $this->expectedType = AccountType::ASSET;
+        }
     }
 
     /**
      * Get the validation error message.
+     *
+     * @codeCoverageIgnore
      *
      * @return string
      */
@@ -65,12 +75,11 @@ class UniqueIban implements Rule
     /**
      * Determine if the validation rule passes.
      *
-     * @param  string $attribute
-     * @param  mixed  $value
+     * @param string $attribute
+     * @param mixed  $value
      *
      * @return bool
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     *
      */
     public function passes($attribute, $value): bool
     {
@@ -78,13 +87,13 @@ class UniqueIban implements Rule
             return true; // @codeCoverageIgnore
         }
         if (null === $this->expectedType) {
-            return true;
+            return true; // @codeCoverageIgnore
         }
         $maxCounts = $this->getMaxOccurrences();
 
         foreach ($maxCounts as $type => $max) {
             $count = $this->countHits($type, $value);
-
+            Log::debug(sprintf('Count for "%s" and IBAN "%s" is %d', $type, $value, $count));
             if ($count > $max) {
                 Log::debug(
                     sprintf(
@@ -108,29 +117,23 @@ class UniqueIban implements Rule
      */
     private function countHits(string $type, string $iban): int
     {
-        $count = 0;
-        /** @noinspection NullPointerExceptionInspection */
-        $query = auth()->user()
-                       ->accounts()
-                       ->leftJoin('account_types', 'account_types.id', '=', 'accounts.account_type_id')
-                       ->where('account_types.type', $type);
+        $query
+            = auth()->user()
+                    ->accounts()
+                    ->leftJoin('account_types', 'account_types.id', '=', 'accounts.account_type_id')
+                    ->where('accounts.iban', $iban)
+                    ->where('account_types.type', $type);
+
         if (null !== $this->account) {
             $query->where('accounts.id', '!=', $this->account->id);
         }
-        /** @var Collection $result */
-        $result = $query->get(['accounts.*']);
-        foreach ($result as $account) {
-            if ($account->iban === $iban) {
-                $count++;
-            }
-        }
 
-        return $count;
+        return $query->count();
     }
 
     /**
      * @return array
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     *
      */
     private function getMaxOccurrences(): array
     {
@@ -145,7 +148,7 @@ class UniqueIban implements Rule
             // may appear once in revenue accounts
             $maxCounts[AccountType::REVENUE] = 1;
         }
-        if ('revenue' === $this->expectedType || AccountType::EXPENSE === $this->expectedType) {
+        if ('revenue' === $this->expectedType || AccountType::REVENUE === $this->expectedType) {
             // IBAN should be unique amongst revenue and asset accounts.
             // may appear once in expense accounts
             $maxCounts[AccountType::EXPENSE] = 1;

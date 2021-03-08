@@ -1,46 +1,44 @@
 <?php
 /**
  * TagController.php
- * Copyright (c) 2018 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 declare(strict_types=1);
 
 namespace FireflyIII\Api\V1\Controllers;
 
-use FireflyIII\Api\V1\Requests\TagRequest;
-use FireflyIII\Helpers\Collector\TransactionCollectorInterface;
-use FireflyIII\Helpers\Filter\InternalTransferFilter;
+use FireflyIII\Api\V1\Requests\TagStoreRequest;
+use FireflyIII\Api\V1\Requests\TagUpdateRequest;
+use FireflyIII\Helpers\Collector\GroupCollectorInterface;
 use FireflyIII\Models\Tag;
-use FireflyIII\Models\TransactionType;
 use FireflyIII\Repositories\Tag\TagRepositoryInterface;
 use FireflyIII\Support\Http\Api\TransactionFilter;
+use FireflyIII\Transformers\AttachmentTransformer;
 use FireflyIII\Transformers\TagTransformer;
-use FireflyIII\Transformers\TransactionTransformer;
+use FireflyIII\Transformers\TransactionGroupTransformer;
 use FireflyIII\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use League\Fractal\Manager;
 use League\Fractal\Pagination\IlluminatePaginatorAdapter;
 use League\Fractal\Resource\Collection as FractalCollection;
 use League\Fractal\Resource\Item;
-use League\Fractal\Serializer\JsonApiSerializer;
 
 /**
  * Class TagController
@@ -52,8 +50,11 @@ class TagController extends Controller
     /** @var TagRepositoryInterface The tag repository */
     private $repository;
 
+
     /**
-     * RuleController constructor.
+     * TagController constructor.
+     *
+     * @codeCoverageIgnore
      */
     public function __construct()
     {
@@ -77,6 +78,7 @@ class TagController extends Controller
      * @param Tag $tag
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
     public function delete(Tag $tag): JsonResponse
     {
@@ -88,18 +90,14 @@ class TagController extends Controller
     /**
      * List all of them.
      *
-     * @param Request $request
-     *
-     * @return JsonResponse]
+     * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        // create some objects:
-        $manager = new Manager;
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-
+        $manager = $this->getManager();
         // types to get, page size:
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
 
         // get list of budgets. Count it and split it.
         $collection = $this->repository->get();
@@ -110,9 +108,6 @@ class TagController extends Controller
         $paginator = new LengthAwarePaginator($rules, $count, $pageSize, $this->parameters->get('page'));
         $paginator->setPath(route('api.v1.tags.index') . $this->buildParams());
 
-        // present to user.
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
         /** @var TagTransformer $transformer */
         $transformer = app(TagTransformer::class);
         $transformer->setParameters($this->parameters);
@@ -120,55 +115,78 @@ class TagController extends Controller
         $resource = new FractalCollection($rules, $transformer, 'tags');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
+    }
 
+
+    /**
+     * @param Tag $tag
+     *
+     * @return JsonResponse
+     * @codeCoverageIgnore
+     */
+    public function attachments(Tag $tag): JsonResponse
+    {
+        $manager    = $this->getManager();
+        $pageSize   = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $collection = $this->repository->getAttachments($tag);
+
+        $count       = $collection->count();
+        $attachments = $collection->slice(($this->parameters->get('page') - 1) * $pageSize, $pageSize);
+
+        // make paginator:
+        $paginator = new LengthAwarePaginator($attachments, $count, $pageSize, $this->parameters->get('page'));
+        $paginator->setPath(route('api.v1.tags.attachments', [$tag->id]) . $this->buildParams());
+
+        /** @var AttachmentTransformer $transformer */
+        $transformer = app(AttachmentTransformer::class);
+        $transformer->setParameters($this->parameters);
+
+        $resource = new FractalCollection($attachments, $transformer, 'attachments');
+        $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
+
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
      * List single resource.
      *
-     * @param Request $request
-     * @param Tag     $tag
+     * @param Tag $tag
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
-    public function show(Request $request, Tag $tag): JsonResponse
+    public function show(Tag $tag): JsonResponse
     {
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
+        $manager = $this->getManager();
         /** @var TagTransformer $transformer */
         $transformer = app(TagTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new Item($tag, $transformer, 'tags');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 
     /**
      * Store new object.
      *
-     * @param TagRequest $request
+     * @param TagStoreRequest $request
      *
      * @return JsonResponse
      */
-    public function store(TagRequest $request): JsonResponse
+    public function store(TagStoreRequest $request): JsonResponse
     {
         $rule    = $this->repository->store($request->getAll());
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
+        $manager = $this->getManager();
         /** @var TagTransformer $transformer */
         $transformer = app(TagTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new Item($rule, $transformer, 'tags');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
@@ -178,71 +196,71 @@ class TagController extends Controller
      * @param Tag     $tag
      *
      * @return JsonResponse
+     * @codeCoverageIgnore
      */
     public function transactions(Request $request, Tag $tag): JsonResponse
     {
-        $pageSize = (int)app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
+        $pageSize = (int) app('preferences')->getForUser(auth()->user(), 'listPageSize', 50)->data;
         $type     = $request->get('type') ?? 'default';
         $this->parameters->set('type', $type);
 
         $types   = $this->mapTransactionTypes($this->parameters->get('type'));
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
-
+        $manager = $this->getManager();
         /** @var User $admin */
         $admin = auth()->user();
-        /** @var TransactionCollectorInterface $collector */
-        $collector = app(TransactionCollectorInterface::class);
-        $collector->setUser($admin);
-        $collector->withOpposingAccount()->withCategoryInformation()->withBudgetInformation();
-        $collector->setAllAssetAccounts();
-        $collector->setTag($tag);
 
-        if (\in_array(TransactionType::TRANSFER, $types, true)) {
-            $collector->removeFilter(InternalTransferFilter::class);
-        }
+        // use new group collector:
+        /** @var GroupCollectorInterface $collector */
+        $collector = app(GroupCollectorInterface::class);
+        $collector
+            ->setUser($admin)
+            // filter on tag.
+            ->setTag($tag)
+            // all info needed for the API:
+            ->withAPIInformation()
+            // set page size:
+            ->setLimit($pageSize)
+            // set page to retrieve
+            ->setPage($this->parameters->get('page'))
+            // set types of transactions to return.
+            ->setTypes($types);
 
         if (null !== $this->parameters->get('start') && null !== $this->parameters->get('end')) {
             $collector->setRange($this->parameters->get('start'), $this->parameters->get('end'));
         }
-        $collector->setLimit($pageSize)->setPage($this->parameters->get('page'));
-        $collector->setTypes($types);
-        $paginator = $collector->getPaginatedTransactions();
+        $paginator = $collector->getPaginatedGroups();
         $paginator->setPath(route('api.v1.transactions.index') . $this->buildParams());
         $transactions = $paginator->getCollection();
 
-        /** @var TransactionTransformer $transformer */
-        $transformer = app(TransactionTransformer::class);
+        /** @var TransactionGroupTransformer $transformer */
+        $transformer = app(TransactionGroupTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new FractalCollection($transactions, $transformer, 'transactions');
         $resource->setPaginator(new IlluminatePaginatorAdapter($paginator));
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
     }
 
     /**
      * Update a rule.
      *
-     * @param TagRequest $request
-     * @param Tag        $tag
+     * @param TagUpdateRequest $request
+     * @param Tag              $tag
      *
      * @return JsonResponse
      */
-    public function update(TagRequest $request, Tag $tag): JsonResponse
+    public function update(TagUpdateRequest $request, Tag $tag): JsonResponse
     {
         $rule    = $this->repository->update($tag, $request->getAll());
-        $manager = new Manager();
-        $baseUrl = $request->getSchemeAndHttpHost() . '/api/v1';
-        $manager->setSerializer(new JsonApiSerializer($baseUrl));
+        $manager = $this->getManager();
         /** @var TagTransformer $transformer */
         $transformer = app(TagTransformer::class);
         $transformer->setParameters($this->parameters);
 
         $resource = new Item($rule, $transformer, 'tags');
 
-        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', 'application/vnd.api+json');
+        return response()->json($manager->createData($resource)->toArray())->header('Content-Type', self::CONTENT_TYPE);
 
     }
 }

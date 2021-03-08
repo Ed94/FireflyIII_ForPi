@@ -1,27 +1,32 @@
 <?php
 /**
  * LinkTypeRepository.php
- * Copyright (c) 2017 thegrumpydictator@gmail.com
+ * Copyright (c) 2019 james@firefly-iii.org
  *
- * This file is part of Firefly III.
+ * This file is part of Firefly III (https://github.com/firefly-iii).
  *
- * Firefly III is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
  *
- * Firefly III is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Affero General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with Firefly III. If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 declare(strict_types=1);
 
 namespace FireflyIII\Repositories\LinkType;
 
+use Exception;
+use FireflyIII\Events\DestroyedTransactionLink;
+use FireflyIII\Events\RemovedTransactionLink;
+use FireflyIII\Events\StoredTransactionLink;
+use FireflyIII\Events\UpdatedTransactionLink;
 use FireflyIII\Models\LinkType;
 use FireflyIII\Models\Note;
 use FireflyIII\Models\TransactionJournal;
@@ -33,22 +38,11 @@ use Log;
 /**
  * Class LinkTypeRepository.
  *
- * @SuppressWarnings(PHPMD.TooManyPublicMethods)
  */
 class LinkTypeRepository implements LinkTypeRepositoryInterface
 {
     /** @var User */
     private $user;
-
-    /**
-     * Constructor.
-     */
-    public function __construct()
-    {
-        if ('testing' === config('app.env')) {
-            Log::warning(sprintf('%s should not be instantiated in the TEST environment!', \get_class($this)));
-        }
-    }
 
     /**
      * @param LinkType $linkType
@@ -85,6 +79,7 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
      */
     public function destroyLink(TransactionJournalLink $link): bool
     {
+        event(new DestroyedTransactionLink($link));
         $link->delete();
 
         return true;
@@ -182,7 +177,8 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
     public function getJournalLinks(LinkType $linkType = null): Collection
     {
         $query = TransactionJournalLink
-            ::leftJoin('transaction_journals as source_journals', 'journal_links.source_id', '=', 'source_journals.id')
+            ::with(['source','destination'])
+            ->leftJoin('transaction_journals as source_journals', 'journal_links.source_id', '=', 'source_journals.id')
             ->leftJoin('transaction_journals as dest_journals', 'journal_links.destination_id', '=', 'dest_journals.id')
             ->where('source_journals.user_id', $this->user->id)
             ->where('dest_journals.user_id', $this->user->id)
@@ -192,8 +188,7 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
         if (null !== $linkType) {
             $query->where('journal_links.link_type_id', $linkType->id);
         }
-
-        return $query->get(['journal_links.*']);
+       return $query->get(['journal_links.*']);
     }
 
     /**
@@ -209,13 +204,11 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
         $inward  = TransactionJournalLink::whereDestinationId($journal->id)->get();
         $merged  = $outward->merge($inward);
 
-        $filtered = $merged->filter(
+        return $merged->filter(
             function (TransactionJournalLink $link) {
                 return (null !== $link->source && null !== $link->destination);
             }
         );
-
-        return $filtered;
     }
 
     /**
@@ -251,7 +244,7 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
      * @param TransactionJournal $outward
      *
      * @return TransactionJournalLink|null
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     *
      */
     public function storeLink(array $information, TransactionJournal $inward, TransactionJournal $outward): ?TransactionJournalLink
     {
@@ -288,6 +281,8 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
 
         // make note in noteable:
         $this->setNoteText($link, (string)$information['notes']);
+
+        event(new StoredTransactionLink($link));
 
         return $link;
     }
@@ -339,6 +334,8 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
         $journalLink->save();
         $this->setNoteText($journalLink, $data['notes']);
 
+        event(new UpdatedTransactionLink($journalLink));
+
         return $journalLink;
     }
 
@@ -346,7 +343,7 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
      * @param TransactionJournalLink $link
      * @param string                 $text
      *
-     * @SuppressWarnings(PHPMD.CyclomaticComplexity)
+     * @throws \Exception
      */
     private function setNoteText(TransactionJournalLink $link, string $text): void
     {
@@ -362,7 +359,11 @@ class LinkTypeRepository implements LinkTypeRepositoryInterface
             return;
         }
         if (null !== $dbNote && '' === $text) {
-            $dbNote->delete();
+            try {
+                $dbNote->delete();
+            } catch (Exception $e) {
+                Log::debug(sprintf('Could not delete note: %s', $e->getMessage()));
+            }
         }
 
     }
